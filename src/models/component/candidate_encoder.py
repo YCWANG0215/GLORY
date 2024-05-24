@@ -4,7 +4,7 @@ import numpy as np
 from models.base.layers import *
 from torch_geometric.nn import Sequential
 
-
+# TODO Candidate Encoder
 class CandidateEncoder(nn.Module):
     def __init__(self, cfg):
         super().__init__()

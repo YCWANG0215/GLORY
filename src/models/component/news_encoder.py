@@ -18,29 +18,39 @@ from models.base.layers import *
 class NewsEncoder(nn.Module):
     def __init__(self, cfg, glove_emb=None):
         super().__init__()
+        # word_emb_dim = 300, 为什么这么定义？
+        # glove.840B.300 -> glove词向量维度是300
         token_emb_dim = cfg.model.word_emb_dim
         self.news_dim = cfg.model.head_num * cfg.model.head_dim
 
         if cfg.dataset.dataset_lang == 'english':
             pretrain = torch.from_numpy(glove_emb).float()
+            # padding_idx=0 -> 用于填充以确保所有输入序列有相同的长度
             self.word_encoder = nn.Embedding.from_pretrained(pretrain, freeze=False, padding_idx=0)
         else:
             self.word_encoder = nn.Embedding(glove_emb+1, 300, padding_idx=0)
             nn.init.uniform_(self.word_encoder.weight, -1.0, 1.0)
 
+        # 新闻标题、新闻摘要的最大长度
         self.view_size = [cfg.model.title_size, cfg.model.abstract_size]
-        
 
         self.attention = Sequential('x, mask', [
+            # dropout专门用于训练，推理阶段要关掉dropout
+            # dropout：在训练过程的前向传播中，让每个神经元以一定概率p处于不激活的状态（归零），以达到减少过拟合的效果
             (nn.Dropout(p=cfg.dropout_probability), 'x -> x'),
+            # TODO mask是什么: 掩码张量，用于忽略特定位置的输入数据（例如填充位置），确保模型只关注有效的输入部分
+            # 在处理变长序列时（例如不同长度的句子），为了将它们批量处理
+            # x的形状：(batch_size, seq_len, embedding_dim)
+            # mask的形状：(batch_size, seq_len)。每个元素的值为True或False，True代表该位置有效
             (MultiHeadAttention(token_emb_dim,
                                 token_emb_dim,
                                 token_emb_dim,
                                 cfg.model.head_num,
                                 cfg.model.head_dim), 'x,x,x,mask -> x'),
+            # 归一化
             nn.LayerNorm(self.news_dim),
-            nn.Dropout(p=cfg.dropout_probability),
 
+            nn.Dropout(p=cfg.dropout_probability),
             (AttentionPooling(self.news_dim,
                                 cfg.model.attention_hidden_dim), 'x,mask -> x'),
             nn.LayerNorm(self.news_dim),

@@ -10,7 +10,6 @@ from models.component.nce_loss import NCELoss
 from models.component.news_encoder import *
 from models.component.user_encoder import *
 
-
 class GLORY(nn.Module):
     def __init__(self, cfg, glove_emb=None, entity_emb=None):
         super().__init__()
@@ -18,7 +17,13 @@ class GLORY(nn.Module):
         self.cfg = cfg
         self.use_entity = cfg.model.use_entity
 
+        # TODO head_num->注意力头数量 head_dim->每个注意力头的维度
+        # news_dim为什么定义为head_num * head_dim ?
+        # news_dim计算多头注意力的输出维度
+        # 多头注意力机制的输出维度是所有注意力头的输出连接结果，因此其总维度是head_num * head_dim
         self.news_dim =  cfg.model.head_num * cfg.model.head_dim
+
+        # entity_dim = 100
         self.entity_dim = cfg.model.entity_emb_dim
 
         # -------------------------- Model --------------------------

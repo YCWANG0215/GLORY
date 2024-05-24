@@ -35,6 +35,7 @@ class EntityEncoder(nn.Module):
 
         return result
 
+# TODO 改：实体图
 class GlobalEntityEncoder(nn.Module):
     def __init__(self, cfg):
         super().__init__()

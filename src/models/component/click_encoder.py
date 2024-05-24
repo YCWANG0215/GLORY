@@ -4,6 +4,7 @@ import numpy as np
 from models.base.layers import *
 from torch_geometric.nn import Sequential
 
+# TODO 改：最终候选新闻信息的聚合
 class ClickEncoder(nn.Module):
     def __init__(self, cfg):
         super().__init__()
