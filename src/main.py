@@ -18,8 +18,8 @@ from utils.metrics import *
 from utils.common import *
 
 ### custom your wandb setting here ###
-# os.environ["WANDB_API_KEY"] = ""
-os.environ["WANDB_MODE"] = "offline"
+os.environ["WANDB_API_KEY"] = "d5041d20fdb1117dc20f9cb129e7749bd549f8b9"
+# os.environ["WANDB_MODE"] = "offline"
 
 def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, early_stopping):
     model.train()
@@ -28,7 +28,7 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
     sum_loss = torch.zeros(1).to(local_rank)
     sum_auc = torch.zeros(1).to(local_rank)
 
-    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels) \
+    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories) \
             in enumerate(tqdm(dataloader,
                               total=int(cfg.num_epochs * (cfg.dataset.pos_count // cfg.batch_size + 1)),
                               desc=f"[{local_rank}] Training"), start=1):
@@ -36,11 +36,20 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
         mapping_idx = mapping_idx.to(local_rank, non_blocking=True)
         candidate_news = candidate_news.to(local_rank, non_blocking=True)
         labels = labels.to(local_rank, non_blocking=True)
+        # print(f"in main.py, type(candidate_entity = {type(candidate_entity)})")
         candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
         entity_mask = entity_mask.to(local_rank, non_blocking=True)
+        abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+        abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+        # print(f"in main.py, type(subcategories) = {type(subcategories)}")
+        # print(f"in main.py, subcategories: {subcategories}")
+        # subcategories = torch.tensor(subcategories)
+        # print(f"in main.py, type(subcategories) = {type(subcategories)}")
+        # print(f"in main.py, subcategories: {subcategories}")
+        subcategories = subcategories.to(local_rank, non_blocking=True)
 
         with amp.autocast():
-            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels)
+            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories)
             
         # Accumulate the gradients
         scaler.scale(bz_loss).backward()
@@ -92,7 +101,7 @@ def val(model, local_rank, cfg):
     dataloader = load_data(cfg, mode='val', model=model, local_rank=local_rank)
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels) \
+        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num ),
                                   desc=f"[{local_rank}] Validating")):
@@ -100,8 +109,13 @@ def val(model, local_rank, cfg):
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
             entity_mask = entity_mask.to(local_rank, non_blocking=True)
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
+            clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
+            clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
+            abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+            abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+            subcategories = subcategories.to(local_rank, non_blocking=True)
 
-            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask)
+            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories)
             
             tasks.append((labels.tolist(), scores))
 
@@ -140,6 +154,7 @@ def main_worker(local_rank, cfg):
     num_warmup_steps = int(num_training_steps * cfg.warmup_ratio + 1)
     train_dataloader = load_data(cfg, mode='train', local_rank=local_rank)
     model = load_model(cfg).to(local_rank)
+    # print(f"model.parameters: {model.parameters}")
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.optimizer.lr)
 
     lr_lambda = lambda step: 1.0 if step > num_warmup_steps else step / num_warmup_steps
@@ -152,6 +167,7 @@ def main_worker(local_rank, cfg):
         model.load_state_dict(checkpoint['model_state_dict'])  # After Distributed
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     optimizer.zero_grad(set_to_none=True)
     scaler = amp.GradScaler()

@@ -4,3 +4,5 @@ defaults:
 
 model_name : GLORY
 use_graph: true
+#use_abs_entity: true
+#use_subcategory_graph: true

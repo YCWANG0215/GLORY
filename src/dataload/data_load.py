@@ -15,8 +15,8 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
     # ------------- load news.tsv-------------
     news_index = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
-
     news_input = pickle.load(open(Path(data_dir[mode]) / "nltk_token_news.bin", "rb"))
+    # print(f"news_input.shape = {news_input.shape}")
     # ------------- load behaviors_np{X}.tsv --------------
     if mode == 'train':
         target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv"
@@ -37,6 +37,36 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
+            # TODO 添加摘要实体图、类别图 START
+            if cfg.model.use_abs_entity:
+                abs_entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "abs_entity_neighbor_dict.bin", "rb"))
+                total_length = sum(len(lst) for lst in abs_entity_neighbors.values())
+                print(f"[{mode}] abs_entity_neighbor list Length: {total_length}")
+            else:
+                abs_entity_neighbors = None
+
+            if cfg.model.use_subcategory_graph:
+                subcategory_neighbors = pickle.load(open(Path(data_dir[mode]) / "subcategory_neighbor_dict.bin", "rb"))
+                # print(f"subcategory_neighbors: {subcategory_neighbors}")
+                total_length = sum(len(lst) for lst in subcategory_neighbors.values())
+                print(f"[{mode}] subcategory_neighbor list Length: {total_length}")
+            else:
+                subcategory_neighbors = None
+
+            # TODO 添加摘要实体图、类别图 END
+
+
+            # dataset = TrainGraphDataset(
+            #     filename=target_file,
+            #     news_index=news_index,
+            #     news_input=news_input,
+            #     local_rank=local_rank,
+            #     cfg=cfg,
+            #     neighbor_dict=news_neighbors_dict,
+            #     news_graph=news_graph,
+            #     entity_neighbors=entity_neighbors
+            # )
+            # TODO dataset()改动
             dataset = TrainGraphDataset(
                 filename=target_file,
                 news_index=news_index,
@@ -45,7 +75,9 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 cfg=cfg,
                 neighbor_dict=news_neighbors_dict,
                 news_graph=news_graph,
-                entity_neighbors=entity_neighbors
+                entity_neighbors=entity_neighbors,
+                abs_entity_neighbors=abs_entity_neighbors,
+                subcategory_neighbors=subcategory_neighbors
             )
             dataloader = DataLoader(dataset, batch_size=None)
             
@@ -96,6 +128,20 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
+            if cfg.model.use_abs_entity:
+                abs_entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "abs_entity_neighbor_dict.bin", "rb"))
+                total_length = sum(len(lst) for lst in abs_entity_neighbors.values())
+                print(f"[{mode}] abs_entity_neighbor list Length: {total_length}")
+            else:
+                abs_entity_neighbors = None
+
+            if cfg.model.use_subcategory_graph:
+                subcategory_neighbors = pickle.load(open(Path(data_dir[mode]) / "subcategory_neighbor_dict.bin", "rb"))
+                total_length = sum(len(lst) for lst in subcategory_neighbors.values())
+                print(f"[{mode}] subcategory_neighbor list Length: {total_length}")
+            else:
+                subcategory_neighbors = None
+
             if mode == 'val':
                 dataset = ValidGraphDataset(
                     filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv",
@@ -105,8 +151,14 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     cfg=cfg,
                     neighbor_dict=news_neighbors_dict,
                     news_graph=news_graph,
-                    news_entity=news_input[:,-8:-3],
-                    entity_neighbors=entity_neighbors
+                    # TODO change
+                    news_entity=news_input[:,-13:-8],
+                    # news_entity=news_input[:,-8:-3],
+                    entity_neighbors=entity_neighbors,
+                    abs_entity_neighbors=abs_entity_neighbors,
+                    news_abs_entity=news_input[:, -5:],
+                    subcategory_neighbors=subcategory_neighbors,
+                    news_subcategory=news_input[:, -7:-6]
                 )
 
             dataloader = DataLoader(dataset, batch_size=None)

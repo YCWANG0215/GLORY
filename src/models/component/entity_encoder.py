@@ -35,7 +35,6 @@ class EntityEncoder(nn.Module):
 
         return result
 
-# TODO 改：实体图
 class GlobalEntityEncoder(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -55,8 +54,8 @@ class GlobalEntityEncoder(nn.Module):
 
 
     def forward(self, entity_input, entity_mask=None):
-
         batch_size, num_news, num_entity,_ = entity_input.shape
+        # print(f"batch_size: {batch_size}, num_news: {num_news}, num_entity: {num_entity}")
         if entity_mask is not None:
             entity_mask = entity_mask.view(batch_size*num_news, num_entity)
 

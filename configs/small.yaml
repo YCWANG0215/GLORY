@@ -9,7 +9,9 @@ defaults:
   - _self_
 
 optimizer:
-  lr: 0.0002
+#  lr: 0.0002
+#  lr: 0.00002
+  lr: 0.0001
 
 num_epochs: 5
 batch_size: 32            # dataloaders'batch_size = batch_size / gpu_num
@@ -31,10 +33,12 @@ model:
   directed: true
   num_neighbors: 8
   k_hops: 2
-  
+  use_abs_entity: true
+  use_subcategory_graph: true
+  subcategory_neighbors: 5
 
 logger:
-  exp_name: GLORY
+  exp_name: GLORY_improved
   run_name: ${model.model_name}_${dataset.dataset_name}_${model.k_hops}-${model.num_neighbors}-${model.entity_neighbors}
 
 ml_label: default
@@ -46,5 +50,6 @@ reprocess_neighbors: false
 warmup_ratio: 0.1
 log_steps: 1000
 
+#val_skip_epochs: 0
 val_skip_epochs: 2
 val_steps: 1000
