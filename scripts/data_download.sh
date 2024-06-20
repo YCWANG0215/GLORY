@@ -18,8 +18,8 @@ cd data
 
 
 # Small
-#mkdir MINDsmall && cd MINDsmall
-cd MINDsmall
+mkdir MINDsmall && cd MINDsmall
+#cd MINDsmall
 #wget https://mind201910small.blob.core.windows.net/release/MINDsmall_train.zip https://mind201910small.blob.core.windows.net/release/MINDsmall_dev.zip
 unzip MINDsmall_train.zip -d train
 unzip MINDsmall_dev.zip -d val

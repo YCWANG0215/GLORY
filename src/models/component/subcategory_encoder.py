@@ -2,6 +2,8 @@ from torch import nn
 from models.base.layers import *
 from torch_geometric.nn import Sequential
 
+
+
 class SubcategoryEncoder(nn.Module):
     def __init__(self, subcategory_size):
         super().__init__()
@@ -11,6 +13,8 @@ class SubcategoryEncoder(nn.Module):
         self.embedding = nn.Embedding(subcategory_size+1, self.subcategory_emb_dim)
         self.fc = nn.Linear(self.subcategory_emb_dim, self.news_emb_dim)
         self.relu = nn.LeakyReLU(0.2)
+        # print(f"subcategory_size: {subcategory_size}")
+
     def forward(self, subcategory_input):
         # print(f"subcategory_input: {subcategory_input}")
         # print(f"subcategory_input.shape: {subcategory_input.shape}")

@@ -14,12 +14,14 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from dataload.data_load import load_data
 from dataload.data_preprocess import prepare_preprocessed_data
+from dataload.data_preprocess import *
 from utils.metrics import *
 from utils.common import *
 
 ### custom your wandb setting here ###
-os.environ["WANDB_API_KEY"] = "d5041d20fdb1117dc20f9cb129e7749bd549f8b9"
-# os.environ["WANDB_MODE"] = "offline"
+# os.environ["WANDB_API_KEY"] = "d5041d20fdb1117dc20f9cb129e7749bd549f8b9"
+os.environ["WANDB_MODE"] = "offline"
+
 
 def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, early_stopping):
     model.train()
@@ -28,7 +30,9 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
     sum_loss = torch.zeros(1).to(local_rank)
     sum_auc = torch.zeros(1).to(local_rank)
 
-    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories) \
+
+    # TODO Add event extraction model
+    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, _, _) \
             in enumerate(tqdm(dataloader,
                               total=int(cfg.num_epochs * (cfg.dataset.pos_count // cfg.batch_size + 1)),
                               desc=f"[{local_rank}] Training"), start=1):
@@ -39,17 +43,24 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
         # print(f"in main.py, type(candidate_entity = {type(candidate_entity)})")
         candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
         entity_mask = entity_mask.to(local_rank, non_blocking=True)
-        abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
-        abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+        clicked_event = clicked_event.to(local_rank, non_blocking=True)
+        candidate_event = candidate_event.to(local_rank, non_blocking=True)
+        clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
+        # clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
+        # candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
+        if len(abs_candidate_entity) != 0:
+            abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+            abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
         # print(f"in main.py, type(subcategories) = {type(subcategories)}")
         # print(f"in main.py, subcategories: {subcategories}")
         # subcategories = torch.tensor(subcategories)
         # print(f"in main.py, type(subcategories) = {type(subcategories)}")
         # print(f"in main.py, subcategories: {subcategories}")
-        subcategories = subcategories.to(local_rank, non_blocking=True)
+        if len(subcategories) != 0:
+            subcategories = subcategories.to(local_rank, non_blocking=True)
 
         with amp.autocast():
-            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories)
+            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask)
             
         # Accumulate the gradients
         scaler.scale(bz_loss).backward()
@@ -101,9 +112,10 @@ def val(model, local_rank, cfg):
     dataloader = load_data(cfg, mode='val', model=model, local_rank=local_rank)
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories) \
+        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num ),
+                                  # total=int(cfg.dataset.val_len / 1 ),
                                   desc=f"[{local_rank}] Validating")):
             candidate_emb = torch.FloatTensor(np.array(candidate_input)).to(local_rank, non_blocking=True)
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
@@ -111,11 +123,20 @@ def val(model, local_rank, cfg):
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
             clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
             clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
-            abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
-            abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
-            subcategories = subcategories.to(local_rank, non_blocking=True)
 
-            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories)
+            clicked_event = clicked_event.to(local_rank, non_blocking=True)
+            candidate_event = candidate_event.to(local_rank, non_blocking=True)
+            clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
+            # clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
+            # candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
+            if len(abs_candidate_entity) != 0:
+                abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+                abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+            if len(subcategories) != 0:
+                subcategories = subcategories.to(local_rank, non_blocking=True)
+
+            # print(f"in main.py, clicked_event.shape = {clicked_event}")
+            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask)
             
             tasks.append((labels.tolist(), scores))
 
@@ -130,6 +151,11 @@ def val(model, local_rank, cfg):
     reduced_mrr = reduce_mean(torch.tensor(np.nanmean(val_mrr)).float().to(local_rank), cfg.gpu_num)
     reduced_ndcg5 = reduce_mean(torch.tensor(np.nanmean(val_ndcg5)).float().to(local_rank), cfg.gpu_num)
     reduced_ndcg10 = reduce_mean(torch.tensor(np.nanmean(val_ndcg10)).float().to(local_rank), cfg.gpu_num)
+
+    # reduced_auc = reduce_mean(torch.tensor(np.nanmean(val_auc)).float().to(local_rank), 1)
+    # reduced_mrr = reduce_mean(torch.tensor(np.nanmean(val_mrr)).float().to(local_rank), 1)
+    # reduced_ndcg5 = reduce_mean(torch.tensor(np.nanmean(val_ndcg5)).float().to(local_rank), 1)
+    # reduced_ndcg10 = reduce_mean(torch.tensor(np.nanmean(val_ndcg10)).float().to(local_rank), 1)
 
     res = {
         "auc": reduced_auc.item(),
@@ -184,8 +210,10 @@ def main_worker(local_rank, cfg):
     train(model, optimizer, scaler, scheduler, train_dataloader, local_rank, cfg, early_stopping)
 
 
+
     if local_rank == 0:
         wandb.finish()
+
 
 
 @hydra.main(version_base="1.2", config_path=os.path.join(get_root(), "configs"), config_name="small")

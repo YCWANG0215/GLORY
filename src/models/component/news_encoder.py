@@ -59,6 +59,8 @@ class NewsEncoder(nn.Module):
         ])
 
 
+
+
     def forward(self, news_input, mask=None):
         """
         Args:
@@ -67,6 +69,7 @@ class NewsEncoder(nn.Module):
         Returns:
             [batch_size, news_num, news_emb] eg. [64,50,400]
         """
+        # print(f"news_input: {news_input.shape}") #[1, 15828, 43]
         batch_size = news_input.shape[0]
         num_news = news_input.shape[1]
 
@@ -76,9 +79,9 @@ class NewsEncoder(nn.Module):
         title_input, _, _, _, _, _ = news_input.split([self.view_size[0], 5, 1, 1, 1, 5], dim=-1)
 
         title_word_emb = self.word_encoder(title_input.long().view(-1, self.view_size[0]))
-
+        # print(f"title_word_emb.shape: {title_word_emb.shape}") # [15828, 30, 300]
         total_word_emb = title_word_emb
 
         result = self.attention(total_word_emb, mask)
-
+        # print(f"news_encoder result: {result.shape}") # [15828, 400]
         return result.view(batch_size, num_news, self.news_dim)     # [batch, num_news, news_dim]

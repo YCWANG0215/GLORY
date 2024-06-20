@@ -15,11 +15,20 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
     # ------------- load news.tsv-------------
     news_index = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
+    # print(f"len(news_dict): {len(news_index)}")
     news_input = pickle.load(open(Path(data_dir[mode]) / "nltk_token_news.bin", "rb"))
+    # print(f"news_input.shape: {news_input.shape}")
+    event_index = pickle.load(open(Path(data_dir[mode]) / "event_dict.bin", "rb"))
+    # print(f"len(event_dict) = {len(event_index)}")
+    event_input = pickle.load(open(Path(data_dir[mode]) / "nltk_token_event.bin", "rb"))
+    # print(f"event_input.shape = {event_input.shape}")
+    key_entity = pickle.load(open(Path(data_dir[mode]) / "key_entity_dict.bin", "rb"))
+
     # print(f"news_input.shape = {news_input.shape}")
     # ------------- load behaviors_np{X}.tsv --------------
     if mode == 'train':
         target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv"
+        # target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv"
         if cfg.model.use_graph:
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
 
@@ -29,6 +38,12 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
+
+            if cfg.model.use_event:
+                event_graph = torch.load(Path(data_dir[mode]) / "nltk_event_graph.pt")
+                if cfg.model.directed is False:
+                    event_graph.edge_index, event_graph.edge_attr = to_undirected(event_graph.edge_index, event_graph.edge_attr)
+                print(f"[{mode}] Event Graph Info: {event_graph}")
 
             if cfg.model.use_entity:
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -77,7 +92,10 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 news_graph=news_graph,
                 entity_neighbors=entity_neighbors,
                 abs_entity_neighbors=abs_entity_neighbors,
-                subcategory_neighbors=subcategory_neighbors
+                subcategory_neighbors=subcategory_neighbors,
+                event_index=event_index,
+                event_input=event_input,
+                key_entity=key_entity,
             )
             dataloader = DataLoader(dataset, batch_size=None)
             
@@ -88,10 +106,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 news_input=news_input,
                 local_rank=local_rank,
                 cfg=cfg,
+                event_index=event_index,
+                event_input=event_input
             )
 
             dataloader = DataLoader(dataset,
                                     batch_size=int(cfg.batch_size / cfg.gpu_num),
+                                    # batch_size=int(cfg.batch_size / 1),
                                     pin_memory=True)
         return dataloader
     elif mode in ['val', 'test']:
@@ -99,27 +120,78 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
         news_dataset = NewsDataset(news_input)
         news_dataloader = DataLoader(news_dataset,
                                      batch_size=int(cfg.batch_size * cfg.gpu_num),
+                                     # batch_size=int(cfg.batch_size / 1),
                                      num_workers=cfg.num_workers)
-
+        # print(f"EventDataset event_input shape: {event_input.shape}")
+        event_dataset = EventDataset(event_input)
+        # print(f"event_dataset.shape: {event_dataset.shape}")
+        event_dataloader = DataLoader(event_dataset,
+                                      batch_size=int(cfg.batch_size * cfg.gpu_num),
+                                      # batch_size=int(cfg.batch_size / 1),
+                                      num_workers=cfg.num_workers)
         stacked_news = []
         with torch.no_grad():
             for news_batch in tqdm(news_dataloader, desc=f"[{local_rank}] Processing validation News Embedding"):
+                # print(f"news_batch.shape: {news_batch.shape}") # [32, 43]
+                # print(f"news_batch: {news_batch}")
                 if cfg.model.use_graph:
                     batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(0).detach()
                 else:
                     batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(0).detach()
+                    # batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(0).detach()
+                # print(f"batch_emb.shape: {batch_emb.shape}") # [32, 400]
                 stacked_news.append(batch_emb)
-        news_emb = torch.cat(stacked_news, dim=0).cpu().numpy()   
+        # print(f"stacked_news shape: {len(stacked_news)}") # 2039
+        news_emb = torch.cat(stacked_news, dim=0).cpu().numpy()
+        # print(f"news_emb.shape: {news_emb.shape}") # [65239, 400]
+
+        stacked_events = []
+        with torch.no_grad():
+            # local_rank = 'cpu'
+            # idx = 1
+            for event_batch in tqdm(event_dataloader, desc=f"[{local_rank}] Processing validation Event Embedding"):
+                # print(f"event_batch.shape: {event_batch.shape}") # [32, 11]
+                # print(f"event_batch: {event_batch}")
+                # event_emb = model.module.event_encoder(event_batch.long().unsqueeze(0).to(local_rank), None).squeeze(0).detach()
+                # TODO detach()
+                # print(f"event idx{idx} join.")
+                # event_emb = event_batch.long().unsqueeze(0).to(local_rank)
+                # event_emb = event_batch.to(local_rank)
+                # print(f"finish 1")
+                # event_emb = model.module.event_encoder(event_emb, None)
+                # print("finish 2")
+                # event_emb = event_emb.squeeze(0)
+                # print(f"finish 3")
+                event_emb = model.module.event_encoder(event_batch.long().unsqueeze(0).to(local_rank), None).squeeze(0).detach()
+                # print(f"event idx{idx} event_emb finish.")
+                # idx += 1
+                # event_emb = model.module.event_encoder(event_batch.long().to(local_rank), None)
+                # print(f"event_emb.shape: {event_emb.shape}") # [32, 400]
+                # print(f"event_emb: {event_emb}")
+                stacked_events.append(event_emb)
+                # print(f"stacked_events: {stacked_events}")
+
+
+        events_emb = torch.cat(stacked_events, dim=0).cpu().numpy()
+        # print(f"events_emb: {events_emb}")
 
         if cfg.model.use_graph:
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
 
+
             if cfg.model.directed is False:
                 news_graph.edge_index, news_graph.edge_attr = to_undirected(news_graph.edge_index, news_graph.edge_attr)
             print(f"[{mode}] News Graph Info: {news_graph}")
 
+            # if cfg.model.use_event:
+            #     # event_graph = torch.load(Path(data_dir[mode]) / "nltk_event_graph.pt")
+            #     # event_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "event_neighbor_dict.bin", "rb"))
+            #     if cfg.model.directed is False:
+            #         event_graph.edge_index, event_graph.edge_attr = to_undirected(event_graph.edge_index,
+            #                                                                     event_graph.edge_attr)
+            #     print(f"[{mode}] News Graph Info: {event_graph}")
             if cfg.model.use_entity:
                 # entity_graph = torch.load(Path(data_dir[mode]) / "entity_graph.pt")
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -144,6 +216,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
             if mode == 'val':
                 dataset = ValidGraphDataset(
+                    # filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv",
                     filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv",
                     news_index=news_index,
                     news_input=news_emb,
@@ -158,7 +231,10 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     abs_entity_neighbors=abs_entity_neighbors,
                     news_abs_entity=news_input[:, -5:],
                     subcategory_neighbors=subcategory_neighbors,
-                    news_subcategory=news_input[:, -7:-6]
+                    news_subcategory=news_input[:, -7:-6],
+                    event_index=event_index,
+                    event_input=events_emb,
+                    key_entity=key_entity,
                 )
 
             dataloader = DataLoader(dataset, batch_size=None)
@@ -166,11 +242,14 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
         else:
             if mode == 'val':
                 dataset = ValidDataset(
+                    # filename=Path(data_dir[mode]) / f"behaviors_0.tsv",
                     filename=Path(data_dir[mode]) / f"behaviors_{local_rank}.tsv",
                     news_index=news_index,
                     news_emb=news_emb,
                     local_rank=local_rank,
                     cfg=cfg,
+                    event_index=event_index,
+                    events_emb=events_emb,
                 )
             else:
                 dataset = ValidDataset(
@@ -179,11 +258,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     news_emb=news_emb,
                     local_rank=local_rank,
                     cfg=cfg,
+                    event_index=event_index,
+                    events_emb=events_emb,
                 )
 
             dataloader = DataLoader(dataset,
                                     batch_size=1,
-                                    # batch_size=int(cfg.batch_   size / cfg.gpu_num),
+                                    # batch_size=int(cfg.batch_size / cfg.gpu_num),
                                     # pin_memory=True, # collate_fn already puts data to GPU
                                     collate_fn=lambda b: collate_fn(b, local_rank))
         return dataloader

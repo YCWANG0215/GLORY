@@ -8,10 +8,14 @@ defaults:
   - override model: GLORY
   - _self_
 
+
+
 optimizer:
 #  lr: 0.0002
 #  lr: 0.00002
-  lr: 0.0001
+  lr: 0.00005
+
+
 
 num_epochs: 5
 batch_size: 32            # dataloaders'batch_size = batch_size / gpu_num
@@ -36,6 +40,13 @@ model:
   use_abs_entity: true
   use_subcategory_graph: true
   subcategory_neighbors: 5
+  use_event: true
+  event_use_abs_extraction: false
+  use_key_entity: true
+  subcategory_size: 270
+  event_dict_size: 50
+
+
 
 logger:
   exp_name: GLORY_improved
@@ -43,7 +54,7 @@ logger:
 
 ml_label: default
 
-num_workers: 4
+num_workers: 8
 early_stop_patience: 5
 reprocess: false
 reprocess_neighbors: false
@@ -51,5 +62,6 @@ warmup_ratio: 0.1
 log_steps: 1000
 
 #val_skip_epochs: 0
+#val_steps: 10
 val_skip_epochs: 2
 val_steps: 1000
