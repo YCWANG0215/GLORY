@@ -13,7 +13,7 @@ class GRULayer(nn.Module):
         self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
 
         self.fc = nn.Linear(hidden_size, output_size)
-
+        # self.relu = nn.LeakyReLU(0.2)
 
     def forward(self, x, lengths):
         # print(f"gru input x.shape: {x.shape}") # train: [32, 50, 400]
@@ -57,4 +57,5 @@ class GRULayer(nn.Module):
         # # output, _ = self.gru(trimmed_input, h0)
         out = self.fc(output_reversed[:, -1, :])
         # print(f"gru out.shape: {out.shape}")
+        # out = self.relu(out)
         return out

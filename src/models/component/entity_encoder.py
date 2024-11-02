@@ -29,9 +29,14 @@ class EntityEncoder(nn.Module):
 
         batch_size, num_news, num_entity, _ = entity_input.shape
         # print(f"entity input shape: {entity_input.shape}")
+        # print(f"entity_input.dtype: {entity_input.dtype}")
+        # entity_input = entity_input.float()
         if entity_mask is not None:
+            # print(f"entity_mask.dtype: {entity_mask.dtype}")
+            # entity_mask = entity_mask.float()
             result = self.atte(entity_input.view(batch_size*num_news, num_entity, self.entity_dim), entity_mask.view(batch_size*num_news, num_entity)).view(batch_size, num_news, self.news_dim)
         else:
+            # print(f"entity_input.shape: {entity_input.shape}")
             result = self.atte(entity_input.view(batch_size*num_news, num_entity, self.entity_dim), None).view(batch_size, num_news, self.news_dim)
         # print(f"entity encoder result shape: {result.shape}")
         return result

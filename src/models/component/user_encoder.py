@@ -28,12 +28,20 @@ class UserTotalEncoder(nn.Module):
     def __init__(self, cfg):
         super(UserTotalEncoder, self).__init__()
         self.cfg = cfg
-        self.fc1 = nn.Linear(800, 600)
+        self.fc1 = nn.Linear(1200, 600)
+        # self.fc1 = nn.Linear(800, 600)
         self.fc2 = nn.Linear(600, 400)
         self.relu = nn.LeakyReLU(0.2)
 
-    def forward(self, user_common_emb, user_event_emb):
-        user_emb = torch.cat((user_common_emb, user_event_emb), dim=-1)
+
+    def forward(self, user_common_emb, user_event_emb, user_key_entity_emb):
+        user_emb = torch.cat((user_common_emb, user_event_emb, user_key_entity_emb), dim=-1)
         x = self.relu(self.fc1(user_emb))
         result = self.fc2(x)
         return result
+
+    # def forward(self, user_common_emb, user_event_emb):
+    #     user_emb = torch.cat((user_common_emb, user_event_emb), dim=-1)
+    #     x = self.relu(self.fc1(user_emb))
+    #     result = self.fc2(x)
+    #     return result

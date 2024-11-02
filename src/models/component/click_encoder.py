@@ -16,7 +16,7 @@ class ClickEncoder(nn.Module):
         self.use_abs_entity = cfg.model.use_abs_entity
         self.use_subcategory = cfg.model.use_subcategory_graph
         self.use_event = cfg.model.use_event
-
+        self.use_key_entity = cfg.model.use_key_entity
         # print(f"ClickEncoder: use_entity={self.use_entity}, use_abs_entity={self.use_abs_entity}, use_subcategory_graph={self.use_subcategory}, use_event={self.use_event}")
         # if self.use_entity:
         #     self.atte = Sequential('a,b,c', [
@@ -32,6 +32,25 @@ class ClickEncoder(nn.Module):
         #     self.atte = Sequential('a,b,c,d,e,f', [
         #         (lambda a,b,c,d,e,f: torch.stack([a,b,c,d,e,f], dim=-2).view(-1, 6, self.news_dim), 'a,b,c,d,e,f -> x'),
         #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim)
+        #     ])
+        # if self.use_entity and self.use_abs_entity and self.use_subcategory and self.use_key_entity:
+        #     self.atte = Sequential('a,b,c,d,e,f', [
+        #         (lambda a, b, c, d, e, f: torch.stack([a, b, c, d, e, f], dim=-2).view(-1, 6, self.news_dim),
+        #          'a,b,c,d,e,f -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # if self.use_entity == False and self.use_abs_entity and self.use_subcategory:
+        #     self.atte = Sequential('a,b,c,d', [
+        #         (lambda a, b, c, d: torch.stack([a, b, c, d], dim=-2).view(-1, 4, self.news_dim),
+        #          'a,b,c,d -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_entity and self.use_abs_entity and self.use_subcategory == False:
+        #     # print("[clickEncoder]: use_subcategory = False")
+        #     self.atte = Sequential('a,b,c,d', [
+        #         (lambda a, b, c, d: torch.stack([a, b, c, d], dim=-2).view(-1, 4, self.news_dim),
+        #          'a,b,c,d -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
         #     ])
         if self.use_entity and self.use_abs_entity and self.use_subcategory:
             self.atte = Sequential('a,b,c,d,e', [
@@ -80,7 +99,7 @@ class ClickEncoder(nn.Module):
 
 
 
-    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None, click_abs_entity_emb=None, click_subcategory_emb=None, click_event_emb=None):
+    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None, click_abs_entity_emb=None, click_subcategory_emb=None, clicked_key_entity_emb=None):
 
         batch_size, num_news = click_title_emb.shape[0], click_title_emb.shape[1]
         # print(f"click_encoder: batch_size={batch_size}, num_news={num_news}")
@@ -91,6 +110,13 @@ class ClickEncoder(nn.Module):
         # if click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is not None and click_event_emb is not None:
         #     # print("exe1")
         #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb, click_subcategory_emb, click_event_emb)
+        # if click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is not None and clicked_key_entity_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb, click_subcategory_emb, clicked_key_entity_emb)
+        # if click_entity_emb is None and click_abs_entity_emb is not None and click_subcategory_emb is not None:
+        #     # print(f"[clickEncoder]: use_entity = false")
+        #     result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb, click_subcategory_emb)
+        # elif click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb)
         if click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is not None:
             # print("exe2")
             result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb, click_subcategory_emb)
@@ -112,18 +138,18 @@ class ClickEncoder(nn.Module):
         return result.view(batch_size, num_news, self.news_dim)
     
 
-class ClickTotalEncoder(nn.Module):
-    def __init__(self, cfg):
-        super(ClickTotalEncoder, self).__init__()
-        self.cfg = cfg
-        self.fc1 = nn.Linear(800, 600)
-        self.fc2 = nn.Linear(600, 400)
-        self.relu = nn.LeakyReLU(0.2)
-
-    def forward(self, clicked_common_emb, clicked_event_emb):
-        # batch_size, num_news= event_encoder_input.shape
-        clicked_emb = torch.cat((clicked_common_emb, clicked_event_emb), dim=-1)
-        x = self.relu(self.fc1(clicked_emb))
-        result = self.fc2(x)
-        # print(f"event total encode result.shape: {result.shape}")
-        return result
+# class ClickTotalEncoder(nn.Module):
+#     def __init__(self, cfg):
+#         super(ClickTotalEncoder, self).__init__()
+#         self.cfg = cfg
+#         self.fc1 = nn.Linear(800, 600)
+#         self.fc2 = nn.Linear(600, 400)
+#         self.relu = nn.LeakyReLU(0.2)
+#
+#     def forward(self, clicked_common_emb, clicked_event_emb):
+#         # batch_size, num_news= event_encoder_input.shape
+#         clicked_emb = torch.cat((clicked_common_emb, clicked_event_emb), dim=-1)
+#         x = self.relu(self.fc1(clicked_emb))
+#         result = self.fc2(x)
+#         # print(f"event total encode result.shape: {result.shape}")
+#         return result

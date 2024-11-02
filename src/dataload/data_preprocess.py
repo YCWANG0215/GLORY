@@ -20,6 +20,14 @@ import itertools
 
 # from models.oneie.predict import *
 
+def pad_to_fix_len(x, fix_length, padding_front=True, padding_value=0):
+    if padding_front:
+        pad_x = [padding_value] * (fix_length - len(x)) + x[-fix_length:]
+        mask = [0] * (fix_length - len(x)) + [1] * min(fix_length, len(x))
+    else:
+        pad_x = x[-fix_length:] + [padding_value] * (fix_length - len(x))
+        mask = [1] * min(fix_length, len(x)) + [0] * (fix_length - len(x))
+    return pad_x, np.array(mask, dtype='float32')
 
 def update_dict(target_dict, key, value=None):
     """
@@ -147,7 +155,11 @@ def read_raw_news(cfg, file_path, mode='train'):
         event_dict = pickle.load(open(Path(data_dir["train"]) / "event_dict.bin", "rb"))
         event_type_dict = pickle.load(open(Path(data_dir["train"]) / "event_type_dict.bin", "rb"))
         # print(f"len(event_type_dict): {len(event_type_dict)}")
-        key_entity_dict = pickle.load(open(Path(data_dir["train"]) / "key_entity_dict.bin", "rb"))
+        # key_entity_dict = pickle.load(open(Path(data_dir["train"]) / "key_entity_dict.bin", "rb"))
+        key_entities = pickle.load(open(Path(data_dir["train"]) / "key_entities.bin", "rb"))
+
+        # key_entities_mask = pickle.load(open(Path(data_dir["train"]) / "key_entities_mask.bin", "rb"))
+
         # role_dict = pickle.load(open(Path(data_dir["train"]) / "role_dict.bin", "rb"))
     else:
         news = {}
@@ -159,7 +171,9 @@ def read_raw_news(cfg, file_path, mode='train'):
         events = {}
         event_type_dict = {}
         event_dict = {}
-        key_entity_dict = {}
+        # key_entity_dict = {}
+        key_entities = {}
+        key_entities_mask = {}
         # role_dict = {}
 
     # category_dict = {}
@@ -174,12 +188,16 @@ def read_raw_news(cfg, file_path, mode='train'):
             # split one line
             split_line = line.strip('\n').split('\t')
             news_id, category, subcategory, title, abstract, url, t_entity_str, abs_entity_str = split_line
+            # print(f"t_entity_str = {t_entity_str}")
             update_dict(target_dict=news_dict, key=news_id)
             update_dict(target_dict=event_dict, key=news_id)
             provided_entity = []
+            provided_entity_abs = []
             # Entity
             if t_entity_str:
                 entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
+                abs_entity_ids = [obj["WikidataId"] for obj in json.loads(abs_entity_str)]
+                entity_ids += abs_entity_ids
                 [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
                 provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
             else:
@@ -190,20 +208,25 @@ def read_raw_news(cfg, file_path, mode='train'):
             if abs_entity_str:
                 abs_entity_ids = [obj["WikidataId"] for obj in json.loads(abs_entity_str)]
                 [update_dict(target_dict=abs_entity_dict, key=abs_entity_id) for abs_entity_id in abs_entity_ids]
+                provided_entity_abs = [obj["SurfaceForms"][0] for obj in json.loads(abs_entity_str) if obj["SurfaceForms"]]
             else:
                 abs_entity_ids = abs_entity_str
 
+
+
+            provided_entity += provided_entity_abs
+
             # TODO 事件抽取
             # news_entry: 标题+摘要
-            # news_entry = f"{title}"
-            # news_entry_dir = os.path.join(data_dir[f"{mode}"], "NewsTxt")
+            news_entry = f"{title}"
+            news_entry_dir = os.path.join(data_dir[f"{mode}"], "NewsTxt")
             event_json_dir = os.path.join(data_dir[f"{mode}"], "EventJson")
-            # os.makedirs(news_entry_dir, exist_ok=True)
-            # os.makedirs(event_json_dir, exist_ok=True)
-            # news_entry_file_path = os.path.join(news_entry_dir, f"{news_id}.txt")
+            os.makedirs(news_entry_dir, exist_ok=True)
+            os.makedirs(event_json_dir, exist_ok=True)
+            news_entry_file_path = os.path.join(news_entry_dir, f"{news_id}.txt")
 
-            # with open(news_entry_file_path, 'w') as news_entry_file:
-            #     news_entry_file.write(news_entry + '\n')
+            with open(news_entry_file_path, 'w') as news_entry_file:
+                news_entry_file.write(news_entry + '\n')
 
             # TODO 读出事件抽取结果中的每个entities对应的token、triggers、relations以及roles
             event_json_path = os.path.join(event_json_dir, f"{news_id}.txt.json")
@@ -236,6 +259,7 @@ def read_raw_news(cfg, file_path, mode='train'):
                     event_types.append(_event_type)
                     event_type_confidence.append(confidence)
 
+                # NO
                 # roles_origin = event_json["graph"]["roles"]
                 # roles = []
                 # for role in roles_origin:
@@ -261,9 +285,58 @@ def read_raw_news(cfg, file_path, mode='train'):
             # provided_entity_tuples = [tuple(entity) for entity in provided_entity]
             # event_entities_tuples = [tuple(entity) for entity in event_entities]
             # key_entity_tuples = list(set(provided_entity_tuples) & set(event_entities_tuples))
+
+            # TODO one line
+            # key_entity_list = []
             key_entity_list = list(set(provided_entity) & set(event_entities))
-            key_entity = ' '.join(key_entity_list)
-            key_entity_tokens = word_tokenize(key_entity.lower(), language=cfg.dataset.dataset_lang)
+
+            # key_entity = ' '.join(key_entity_list)
+            # print(f"key_entity = {key_entity}")
+            # key_entity_tokens = word_tokenize(key_entity.lower(), language=cfg.dataset.dataset_lang)
+
+            # entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
+            #                 [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
+            #                 provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
+            # if key_entity_list:
+            # print(f"type(key_entity) = {type(key_entity_list)}")
+
+            # TODO
+            key_entity_ids = []
+            for key_entity in key_entity_list:
+                for obj in json.loads(t_entity_str):
+                    # print(f"key_entity = {key_entity} , obj[SurfaceForms] = {sur}, id = {id}")
+                    if len(obj["SurfaceForms"]) > 0:
+                        sur = obj["SurfaceForms"][0]
+                    if key_entity == sur:
+                        id = obj["WikidataId"]
+                        key_entity_ids.append(id)
+
+            # key_entity_ids = list(itertools.chain.from_iterable(key_entity_ids))
+            # print(f"key_entity: {key_entity}")
+            # print(f"key_entity_ids = {key_entity_ids}")
+
+            # TODO 已经拿到这条news_id对应的key_entity的wikidataID（Q开头的），接下来从entity_dict中取出这些wikidataID对应的entity序号
+
+            actual_key_entity_ids = []
+            # print(f"key_entity_size: {cfg.model.key_entity_size}")
+            for key_entity_id in key_entity_ids:
+                actual_key_entity_ids.append(entity_dict[key_entity_id])
+
+            # print(f"key_entity_ids: {actual_key_entity_ids}, len: {len(actual_key_entity_ids)}")
+            if len(actual_key_entity_ids) >= cfg.model.key_entity_size:
+                actual_key_entity_ids = actual_key_entity_ids[-cfg.model.key_entity_size:]
+            else:
+                actual_key_entity_ids, actual_key_entity_mask = pad_to_fix_len(actual_key_entity_ids, cfg.model.key_entity_size)
+            # print(len(actual_key_entity_ids))
+            # print(f"after changed actual_key_entity_ids: {actual_key_entity_ids}")
+            # update_dict(target_dict=key_entity_dict, key=news_id)
+            update_dict(target_dict=key_entities, key=news_id, value=[actual_key_entity_ids, actual_key_entity_mask])
+            # news_idx = news_dict[news_id]
+            # update_dict(target_dict=key_entities_mask, key=news_idx, value=actual_key_entity_mask)
+
+
+
+
             # key_entities = list(set(provided_entity) & set(event_entities))
             # key_entity = [list(entity) for entity in key_entity_tuples]
             # key_entity = [list(entity) for entity in key_entities]
@@ -271,29 +344,32 @@ def read_raw_news(cfg, file_path, mode='train'):
             # print(f"event_entities: {event_entities}")
             # print(f"key_entity: {key_entity}")
             # print()
-            update_dict(target_dict=key_entity_dict, key=news_id, value=key_entity_tokens)
+            # update_dict(target_dict=key_entity_dict, key=news_id, value=key_entity_tokens)
 
 
             tokens = word_tokenize(title.lower(), language=cfg.dataset.dataset_lang)
             # abs_tokens = word_tokenize(abstract.lower(), language=cfg.dataset.dataset_lang)
 
             # TODO key_entity要不要Glove编码
-            event = {
-                "event_type": event_type,
-                "event_type_idx": event_type_dict[event_type],
-                "event_entities": event_entities,
-                # "entity_role": roles,
-                "category": category,
-                "subcategory": subcategory,
-                "triggers": triggers
-            }
+            # event = {
+            #     "event_type": event_type,
+            #     "event_type_idx": event_type_dict[event_type],
+            #     "event_entities": event_entities,
+            #     # "entity_role": roles,
+            #     "category": category,
+            #     "subcategory": subcategory,
+            #     "triggers": triggers
+            # }
             # print(f"event: {event}")
             update_dict(target_dict=news, key=news_id, value=[tokens, category, subcategory, entity_ids,
                                                                 news_dict[news_id], abs_entity_ids])
 
 
+
+
             update_dict(target_dict=category_dict, key=category)
             update_dict(target_dict=subcategory_dict, key=subcategory)
+            # TODO one line
             update_dict(target_dict=events, key=news_id, value=[event_type, event_type_dict[event_type], event_entities, category, subcategory, triggers])
             # update_dict(target_dict=events, key=news_id, value=event)
 
@@ -323,11 +399,11 @@ def read_raw_news(cfg, file_path, mode='train'):
             word = [k for k, v in word_cnt.items() if v > cfg.model.word_filter_num]
             word_dict = {k: v for k, v in zip(word, range(1, len(word) + 1))}
             # return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entity_dict
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities
         else:  # val, test
             # TODO 非训练集要不要返回category_dict、subcategory_dict
             # return news, news_dict, None, None, entity_dict, None
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entity_dict
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entities
 
 
 def read_parsed_news(cfg, news, news_dict,
@@ -404,7 +480,7 @@ def prepare_preprocess_bin(cfg, mode):
 
     if cfg.reprocess is True:
         # Glove
-        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entity_dict = read_raw_news(
+        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities= read_raw_news(
             file_path=Path(data_dir[mode]) / "news.tsv",
             cfg=cfg,
             mode=mode,
@@ -429,7 +505,9 @@ def prepare_preprocess_bin(cfg, mode):
         pickle.dump(event_dict, open(Path(data_dir[mode]) / "event_dict.bin", "wb"))
         pickle.dump(event_type_dict, open(Path(data_dir[mode]) / "event_type_dict.bin", "wb"))
         pickle.dump(events, open(Path(data_dir[mode]) / "events.bin", "wb"))
-        pickle.dump(key_entity_dict, open(Path(data_dir[mode])/ "key_entity_dict.bin", "wb"))
+        # pickle.dump(key_entity_dict, open(Path(data_dir[mode])/ "key_entity_dict.bin", "wb"))
+        pickle.dump(key_entities, open(Path(data_dir[mode]) / "key_entities.bin", "wb"))
+        # pickle.dump(key_entities_mask, open(Path(data_dir[mode]) / "key_entities_mask.bin", "wb"))
         # pickle.dump(role_dict, open(Path(data_dir[mode]) / "role_dict.bin", "wb"))
 
         # nltk_news_features: news_title, news_entity, news_category, news_subcategory, news_index
@@ -437,10 +515,12 @@ def prepare_preprocess_bin(cfg, mode):
                                               category_dict, subcategory_dict, entity_dict,
                                               word_dict, abs_entity_dict)
         # def read_news_events(cfg, news, news_dict, event_dict=None, events=None, word_dict=None, role_dict=None, category_dict=None, subcategory_dict=None,):
+        # TODO one line
         nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict, category_dict, subcategory_dict, event_dict)
         # news_input: 把输入的新闻特征信息连成一个大矩阵
         news_input = np.concatenate([x for x in nltk_news_features], axis=1)
         pickle.dump(news_input, open(Path(data_dir[mode]) / "nltk_token_news.bin", "wb"))
+        # TODO two line
         event_input = np.concatenate([x for x in nltk_event_features], axis=1)
         pickle.dump(event_input, open(Path(data_dir[mode]) / "nltk_token_event.bin", "wb"))
         print("Glove token preprocess finish.")
@@ -550,114 +630,114 @@ def prepare_news_graph(cfg, mode='train'):
         print(f"[{mode}] Finish nltk News Graph Construction, \nGraph Path: {nltk_target_path}\nGraph Info: {data}")
 
 
-def prepare_event_graph(cfg, mode='train'):
-    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
-
-    nltk_target_path = Path(data_dir[mode]) / "nltk_event_graph.pt"
-
-    reprocess_flag = False
-    if nltk_target_path.exists() is False:
-        reprocess_flag = True
-
-    if (reprocess_flag == False) and (cfg.reprocess == False):
-        print(f"[{mode}] All graphs exist !")
-        return
-
-
-    # -----------------------------------------News Graph------------------------------------------------
-    behavior_path = Path(data_dir['train']) / "behaviors.tsv"
-    origin_graph_path = Path(data_dir['train']) / "nltk_event_graph.pt"
-
-    # news_dict: 新闻id+序号
-    news_dict = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
-    # event_dict: 事件类型id+序号
-    event_dict = pickle.load(open(Path(data_dir[mode]) / "event_dict.bin", "rb"))
-    # events: key->news_id, value: event
-    events = pickle.load(open(Path(data_dir[mode]) / "events.bin", "rb"))
-
-    # nltk_token_news = pickle.load(open(Path(data_dir[mode]) / "nltk_token_news.bin", "rb"))
-    nltk_token_event = pickle.load(open(Path(data_dir[mode])/ "nltk_token_event.bin", "rb"))
-
-    # ------------------- Build Graph -------------------------------
-    if mode == 'train':
-        edge_list, user_set = [], set()
-        # 读取behavior行数
-        num_line = len(open(behavior_path, encoding='utf-8').readlines())
-        with open(behavior_path, 'r', encoding='utf-8') as f:
-            for line in tqdm(f, total=num_line, desc=f"[{mode}] Processing behaviors news to Event Graph"):
-                line = line.strip().split('\t')
-
-                # check duplicate user
-                used_id = line[1]
-                if used_id in user_set:
-                    continue
-                else:
-                    user_set.add(used_id)
-
-                # record cnt & read path
-                # 浏览过的新闻
-                history = line[3].split()
-                if len(history) > 1:
-                    # long_edge = [news_dict[news_id] for news_id in history]
-                    # TODO long_edge存news_id?
-                    long_edge = [event_dict[news_id] for news_id in history]
-                    edge_list.append(long_edge)
-
-        # edge count
-        node_feat = nltk_token_event
-        target_path = nltk_target_path
-        num_nodes = len(news_dict) + 1
-
-        short_edges = []
-        for edge in tqdm(edge_list, total=len(edge_list), desc=f"Processing event edge list"):
-            # Trajectory Graph 轨迹图
-            if cfg.model.use_graph_type == 0:
-                for i in range(len(edge) - 1):
-                    short_edges.append((edge[i], edge[i + 1]))
-                    # TODO 生成双向边（无向图？）
-                    # short_edges.append((edge[i + 1], edge[i]))
-            elif cfg.model.use_graph_type == 1:
-                # Co-occurence Graph 共现图
-                for i in range(len(edge) - 1):
-                    for j in range(i + 1, len(edge)):
-                        short_edges.append((edge[i], edge[j]))
-                        short_edges.append((edge[j], edge[i]))
-            else:
-                assert False, "Wrong"
-
-        edge_weights = Counter(short_edges)
-        unique_edges = list(edge_weights.keys())
-
-        # edge_index形状：(2, num_edges)，num_edges是边的数量。这个张量的第一行表示每条边的起点，第二行表示每条边的终点
-        edge_index = torch.tensor(list(zip(*unique_edges)), dtype=torch.long)
-        # 遍历每一条边，获取权重
-        edge_attr = torch.tensor([edge_weights[edge] for edge in unique_edges], dtype=torch.long)
-
-        # 创建图数据对象，包含节点特征、边索引和节点数量等信息
-        data = Data(x=torch.from_numpy(node_feat),
-                    edge_index=edge_index, edge_attr=edge_attr,
-                    num_nodes=num_nodes)
-
-        # write_data_to_file(data, "news_graph.txt")
-        # np.set_printoptions(threshold=np.inf)
-        # print(data.x)
-
-        torch.save(data, target_path)
-        print(data)
-        print(f"[{mode}] Finish Event Graph Construction, \nGraph Path: {target_path} \nGraph Info: {data}")
-
-    elif mode in ['test', 'val']:
-        origin_graph = torch.load(origin_graph_path)
-        edge_index = origin_graph.edge_index
-        edge_attr = origin_graph.edge_attr
-        node_feat = nltk_token_event
-
-        data = Data(x=torch.from_numpy(node_feat),
-                    edge_index=edge_index, edge_attr=edge_attr,
-                    num_nodes=len(news_dict) + 1)
-
-        torch.save(data, nltk_target_path)
-        print(f"[{mode}] Finish nltk Event Graph Construction, \nGraph Path: {nltk_target_path}\nGraph Info: {data}")
+# def prepare_event_graph(cfg, mode='train'):
+#     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+#
+#     nltk_target_path = Path(data_dir[mode]) / "nltk_event_graph.pt"
+#
+#     reprocess_flag = False
+#     if nltk_target_path.exists() is False:
+#         reprocess_flag = True
+#
+#     if (reprocess_flag == False) and (cfg.reprocess == False):
+#         print(f"[{mode}] All graphs exist !")
+#         return
+#
+#
+#     # -----------------------------------------News Graph------------------------------------------------
+#     behavior_path = Path(data_dir['train']) / "behaviors.tsv"
+#     origin_graph_path = Path(data_dir['train']) / "nltk_event_graph.pt"
+#
+#     # news_dict: 新闻id+序号
+#     news_dict = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
+#     # event_dict: 事件类型id+序号
+#     event_dict = pickle.load(open(Path(data_dir[mode]) / "event_dict.bin", "rb"))
+#     # events: key->news_id, value: event
+#     events = pickle.load(open(Path(data_dir[mode]) / "events.bin", "rb"))
+#
+#     # nltk_token_news = pickle.load(open(Path(data_dir[mode]) / "nltk_token_news.bin", "rb"))
+#     nltk_token_event = pickle.load(open(Path(data_dir[mode])/ "nltk_token_event.bin", "rb"))
+#
+#     # ------------------- Build Graph -------------------------------
+#     if mode == 'train':
+#         edge_list, user_set = [], set()
+#         # 读取behavior行数
+#         num_line = len(open(behavior_path, encoding='utf-8').readlines())
+#         with open(behavior_path, 'r', encoding='utf-8') as f:
+#             for line in tqdm(f, total=num_line, desc=f"[{mode}] Processing behaviors news to Event Graph"):
+#                 line = line.strip().split('\t')
+#
+#                 # check duplicate user
+#                 used_id = line[1]
+#                 if used_id in user_set:
+#                     continue
+#                 else:
+#                     user_set.add(used_id)
+#
+#                 # record cnt & read path
+#                 # 浏览过的新闻
+#                 history = line[3].split()
+#                 if len(history) > 1:
+#                     # long_edge = [news_dict[news_id] for news_id in history]
+#                     # TODO long_edge存news_id?
+#                     long_edge = [event_dict[news_id] for news_id in history]
+#                     edge_list.append(long_edge)
+#
+#         # edge count
+#         node_feat = nltk_token_event
+#         target_path = nltk_target_path
+#         num_nodes = len(news_dict) + 1
+#
+#         short_edges = []
+#         for edge in tqdm(edge_list, total=len(edge_list), desc=f"Processing event edge list"):
+#             # Trajectory Graph 轨迹图
+#             if cfg.model.use_graph_type == 0:
+#                 for i in range(len(edge) - 1):
+#                     short_edges.append((edge[i], edge[i + 1]))
+#                     # TODO 生成双向边（无向图？）
+#                     # short_edges.append((edge[i + 1], edge[i]))
+#             elif cfg.model.use_graph_type == 1:
+#                 # Co-occurence Graph 共现图
+#                 for i in range(len(edge) - 1):
+#                     for j in range(i + 1, len(edge)):
+#                         short_edges.append((edge[i], edge[j]))
+#                         short_edges.append((edge[j], edge[i]))
+#             else:
+#                 assert False, "Wrong"
+#
+#         edge_weights = Counter(short_edges)
+#         unique_edges = list(edge_weights.keys())
+#
+#         # edge_index形状：(2, num_edges)，num_edges是边的数量。这个张量的第一行表示每条边的起点，第二行表示每条边的终点
+#         edge_index = torch.tensor(list(zip(*unique_edges)), dtype=torch.long)
+#         # 遍历每一条边，获取权重
+#         edge_attr = torch.tensor([edge_weights[edge] for edge in unique_edges], dtype=torch.long)
+#
+#         # 创建图数据对象，包含节点特征、边索引和节点数量等信息
+#         data = Data(x=torch.from_numpy(node_feat),
+#                     edge_index=edge_index, edge_attr=edge_attr,
+#                     num_nodes=num_nodes)
+#
+#         # write_data_to_file(data, "news_graph.txt")
+#         # np.set_printoptions(threshold=np.inf)
+#         # print(data.x)
+#
+#         torch.save(data, target_path)
+#         print(data)
+#         print(f"[{mode}] Finish Event Graph Construction, \nGraph Path: {target_path} \nGraph Info: {data}")
+#
+#     elif mode in ['test', 'val']:
+#         origin_graph = torch.load(origin_graph_path)
+#         edge_index = origin_graph.edge_index
+#         edge_attr = origin_graph.edge_attr
+#         node_feat = nltk_token_event
+#
+#         data = Data(x=torch.from_numpy(node_feat),
+#                     edge_index=edge_index, edge_attr=edge_attr,
+#                     num_nodes=len(news_dict) + 1)
+#
+#         torch.save(data, nltk_target_path)
+#         print(f"[{mode}] Finish nltk Event Graph Construction, \nGraph Path: {nltk_target_path}\nGraph Info: {data}")
 
 
 
@@ -959,6 +1039,21 @@ def prepare_subcategory_graph(cfg, mode='train'):
         print(f"[{mode}] Finish Subcategory Graph Construction, \n Graph Path: {target_path} \nGraph Info: {data}")
 
 def prepare_preprocessed_data(cfg):
+    # Entity vec process
+    data_dir = {"train":cfg.dataset.train_dir, "val":cfg.dataset.val_dir, "test":cfg.dataset.test_dir}
+    train_entity_emb_path = Path(data_dir['train']) / "entity_embedding.vec"
+    val_entity_emb_path = Path(data_dir['val']) / "entity_embedding.vec"
+    test_entity_emb_path = Path(data_dir['test']) / "entity_embedding.vec"
+
+    train_combined_path = Path(data_dir['train']) / "combined_entity_embedding.vec"
+    val_combined_path = Path(data_dir['val']) / "combined_entity_embedding.vec"
+    test_combined_path = Path(data_dir['test']) / "combined_entity_embedding.vec"
+
+    os.system("cat " + f"{train_entity_emb_path} {val_entity_emb_path}" + f" > {train_combined_path}")
+    os.system("cat " + f"{train_entity_emb_path} {val_entity_emb_path}" + f" > {val_combined_path}")
+    os.system("cat " + f"{train_entity_emb_path} {test_entity_emb_path}" + f" > {test_combined_path}")
+
+
     prepare_distributed_data(cfg, "train")
     prepare_distributed_data(cfg, "val")
 
@@ -1010,16 +1105,18 @@ def prepare_preprocessed_data(cfg):
     # TODO 新增END
 
 
-    # Entity vec process
-    data_dir = {"train":cfg.dataset.train_dir, "val":cfg.dataset.val_dir, "test":cfg.dataset.test_dir}
-    train_entity_emb_path = Path(data_dir['train']) / "entity_embedding.vec"
-    val_entity_emb_path = Path(data_dir['val']) / "entity_embedding.vec"
-    test_entity_emb_path = Path(data_dir['test']) / "entity_embedding.vec"
-
-    val_combined_path = Path(data_dir['val']) / "combined_entity_embedding.vec"
-    test_combined_path = Path(data_dir['test']) / "combined_entity_embedding.vec"
-
-    os.system("cat " + f"{train_entity_emb_path} {val_entity_emb_path}" + f" > {val_combined_path}")
-    os.system("cat " + f"{train_entity_emb_path} {test_entity_emb_path}" + f" > {test_combined_path}")
+    # # Entity vec process
+    # data_dir = {"train":cfg.dataset.train_dir, "val":cfg.dataset.val_dir, "test":cfg.dataset.test_dir}
+    # train_entity_emb_path = Path(data_dir['train']) / "entity_embedding.vec"
+    # val_entity_emb_path = Path(data_dir['val']) / "entity_embedding.vec"
+    # test_entity_emb_path = Path(data_dir['test']) / "entity_embedding.vec"
+    #
+    # train_combined_path = Path(data_dir['train']) / "combined_entity_embedding.vec"
+    # val_combined_path = Path(data_dir['val']) / "combined_entity_embedding.vec"
+    # test_combined_path = Path(data_dir['test']) / "combined_entity_embedding.vec"
+    #
+    # os.system("cat " + f"{train_entity_emb_path} {val_entity_emb_path}" + f" > {val_combined_path}")
+    # os.system("cat " + f"{train_entity_emb_path} {val_entity_emb_path}" + f" > {val_combined_path}")
+    # os.system("cat " + f"{train_entity_emb_path} {test_entity_emb_path}" + f" > {test_combined_path}")
 
     print("Finish prepare_preprocessed_data function.")

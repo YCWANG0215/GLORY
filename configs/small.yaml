@@ -13,19 +13,26 @@ defaults:
 optimizer:
 #  lr: 0.0002
 #  lr: 0.00002
-  lr: 0.00005
+#  lr: 0.00006
+  lr: 0.00007
+
+
 
 
 
 num_epochs: 5
-batch_size: 32            # dataloaders'batch_size = batch_size / gpu_num
+batch_size: 64            # dataloaders'batch_size = batch_size / gpu_num
 accumulation_steps: 1     # final acutal batch_size = batch_size * accumulation_steps
 gpu_num: 1
 
 # load or not
 load_checkpoint: false
-load_mark: base_small
+#load_checkpoint: true
+#load_mark: base_small
+#load_mark: default_auc0.679425835609436 # event + subcategory + abs_entity + entity, gru layer = 3
+#load_mark: default_auc0.6735262274742126  # 上个模型二次训练
 train_mode: true
+#train_mode: true
 val_mode: true
 
 model:
@@ -45,16 +52,17 @@ model:
   use_key_entity: true
   subcategory_size: 270
   event_dict_size: 50
-
+  key_entity_size: 8
+  gru_layer_num: 3
 
 
 logger:
-  exp_name: GLORY_improved
+  exp_name: FullModel
   run_name: ${model.model_name}_${dataset.dataset_name}_${model.k_hops}-${model.num_neighbors}-${model.entity_neighbors}
 
 ml_label: default
 
-num_workers: 8
+num_workers: 4
 early_stop_patience: 5
 reprocess: false
 reprocess_neighbors: false

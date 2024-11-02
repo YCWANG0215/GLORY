@@ -13,16 +13,17 @@ from models.component.subcategory_encoder import *
 
 from models.component.subcategory_encoder import SubcategoryEncoder, GlobalSubcategoryEncoder, SubcategoryAttention
 
-from src.models.component.click_encoder import ClickTotalEncoder
+# from src.models.component.click_encoder import ClickTotalEncoder
 from src.models.component.event_encoder import EventEncoder, EventAttentionEncoder, EventTotalEncoder
 from src.models.component.gru_layer import GRULayer
+from src.models.component.key_entity_encoder import KeyEntityEncoder, KeyEntityAttention
 from src.models.component.user_encoder import UserTotalEncoder
 
 
 # torch.autograd.set_detect_anomaly(True)
 
 class GLORY(nn.Module):
-    def __init__(self, cfg, glove_emb=None, entity_emb=None, abs_entity_emb=None, subcategory_dict=None, event_emb=None):
+    def __init__(self, cfg, glove_emb=None, entity_emb=None, abs_entity_emb=None, subcategory_dict=None):
         super().__init__()
 
         self.cfg = cfg
@@ -30,8 +31,10 @@ class GLORY(nn.Module):
         self.use_abs_entity = cfg.model.use_abs_entity
         self.use_subcategory = cfg.model.use_subcategory_graph
         self.use_event = cfg.model.use_event
+        self.use_key_entity = cfg.model.use_key_entity
 
-        self.subcategory_size = len(subcategory_dict)
+        if self.use_subcategory:
+            self.subcategory_size = len(subcategory_dict)
         # print(f"subcategory size = {self.subcategory_size}")
 
         # TODO head_num->注意力头数量 head_dim->每个注意力头的维度
@@ -57,6 +60,9 @@ class GLORY(nn.Module):
         self.global_news_encoder = Sequential('x, index', [
             (GatedGraphConv(self.news_dim, num_layers=3, aggr='add'),'x, index -> x'),
         ])
+
+        # if self.use_key_entity:
+        #     pretrain = torch.from_numpy(key_entity_emb)
 
         # Entity
         if self.use_entity:
@@ -89,18 +95,28 @@ class GLORY(nn.Module):
             # # TODO -------- 新增End
 
         if self.use_abs_entity:
-            pretrain = torch.from_numpy(abs_entity_emb).float()
-            self.abs_entity_embedding_layer = nn.Embedding.from_pretrained(pretrain, freeze=False, padding_idx=0)
+            abs_pretrain = torch.from_numpy(abs_entity_emb).float()
+            self.abs_entity_embedding_layer = nn.Embedding.from_pretrained(abs_pretrain, freeze=False, padding_idx=0)
 
-            self.local_entity_encoder = Sequential('x, mask', [
+            self.local_abs_entity_encoder = Sequential('x, mask', [
                 (self.abs_entity_embedding_layer, 'x -> x'),
                 (EntityEncoder(cfg), 'x, mask -> x'),
             ])
 
-            self.global_entity_encoder = Sequential('x, mask', [
+            self.global_abs_entity_encoder = Sequential('x, mask', [
                 (self.abs_entity_embedding_layer, 'x -> x'),
                 (GlobalEntityEncoder(cfg), 'x, mask -> x'),
             ])
+
+        self.key_entity_attention = KeyEntityAttention(cfg)
+        # if self.use_key_entity:
+        #     key_pretrain = torch.from_numpy(entity_emb).float()
+        #     self.key_entity_embedding_layer = nn.Embedding.from_pretrained(key_pretrain, freeze=False, padding_idx=0)
+        #
+        #     self.key_entity_encoder = Sequential('x, mask', [
+        #         (self.key_entity_embedding_layer, 'x -> x'),
+        #         (EntityEncoder(cfg), 'x, mask -> x'),
+        #     ])
 
         if self.use_subcategory:
             self.subcategory_encoder = SubcategoryEncoder(self.subcategory_size)
@@ -113,7 +129,8 @@ class GLORY(nn.Module):
         #     (nn.LeakyReLU(0.2), 'x -> x')
         # ])
 
-        self.gru = GRULayer(cfg, 400, 400, 3, 400)
+        self.gru = GRULayer(cfg, 400, 400, self.cfg.model.gru_layer_num, 400)
+        self.key_entity_encoder = KeyEntityEncoder(cfg)
 
         # Click Encoder
         self.click_encoder = ClickEncoder(cfg)
@@ -128,11 +145,13 @@ class GLORY(nn.Module):
         self.click_predictor = DotProduct()
         self.loss_fn = NCELoss()
 
-
-    def forward(self, subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, label=None, candidate_abs_entity=None, abs_entity_mask=None, candidate_subcategory=None, clicked_event=None, candidate_event=None, clicked_event_mask=None):
+    def forward(self, subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, label=None, candidate_abs_entity=None, abs_entity_mask=None, candidate_subcategory=None, clicked_event=None, candidate_event=None, clicked_event_mask=None, clicked_key_entity=None, clicked_key_entity_mask=None, candidate_key_entity=None, candidate_key_entity_mask=None):
         # -------------------------------------- clicked ----------------------------------
         mask = mapping_idx != -1
         mapping_idx[mapping_idx == -1] = 0
+        # print(f"[train] clicked_key_entity: {clicked_key_entity}")
+        # print(f"######## clicked_key_entity.shape: {clicked_key_entity.shape}")
+        # print(f"######## clicked_key_entity_mask.shape: {clicked_key_entity_mask.shape}")
 
         # print(f"candidate_news.shape: {candidate_news.shape}")
         # print(f"candidate_entity.shape: {candidate_entity.shape}")
@@ -172,7 +191,7 @@ class GLORY(nn.Module):
             clicked_entity = None
         # print("FINISH LINE 136...")
         if self.use_abs_entity:
-            clicked_abs_entity = self.local_entity_encoder(clicked_abs_entity, None)
+            clicked_abs_entity = self.local_abs_entity_encoder(clicked_abs_entity, None)
         else:
             clicked_abs_entity = None
         # print("FINISH LINE 141...")
@@ -217,16 +236,38 @@ class GLORY(nn.Module):
             # print(f"[train] clicked_event.shape: {clicked_event.shape}")
         else:
             user_event_emb = None
+        # print(f"candidate_entity.dtype: {candidate_entity.dtype}")
+        # print(f"candidate_entity_mask.dtype: {entity_mask.dtype}")
+        # print(f"!!!!!!!!!!clicked_key_entity.shape: {clicked_key_entity.shape}")
+        clicked_key_entity_padding_news_mask = (clicked_key_entity_mask.sum(dim=2) != 0)
+        # print(f"clicked_key_entity_padding_news_mask.shape: {clicked_key_entity_padding_news_mask.shape}")
+        if self.use_key_entity:
+            # print(f"type(clicked_key_entity_mask): {type(clicked_key_entity_mask)}")
+            # print(f"clicked_key_entity_mask: {clicked_key_entity_mask}")
+            # clicked_key_entity_mask = clicked_key_entity != 0
+            # clicked_key_entity_mask = torch.tensor(clicked_key_entity_mask, dtype=torch.long)
+            # print(f"clicked_key_entity.dtype: {clicked_key_entity.dtype}")
+            # print(f"clicked_key_entity_mask.dtype: {clicked_key_entity_mask.dtype}")
+            # print(f"clicked_key_entity.shape: {clicked_key_entity.shape}")
+            # print(f"clicked_key_entity_mask.shape: {clicked_key_entity_mask.shape}")
+            # print(f"clicked_key_entity: {clicked_key_entity}")
+            # print(f"[train] clicked_key_entity_emb_mask: {clicked_key_entity_padding_news_mask}")
+            clicked_key_entity_emb = self.key_entity_encoder(clicked_key_entity, clicked_key_entity_mask)
+        else:
+            clicked_key_entity_emb = None
+
         # TODO clicked_total_embedding
         # clicked_total_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
         clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity, clicked_abs_entity, clicked_subcategory)
+        clicked_key_entity_final_emb = self.key_entity_attention(clicked_key_entity_emb, clicked_key_entity_padding_news_mask)
+
         # clicked_total_emb = self.click_total_encoder(clicked_common_emb, clicked_event_emb)
 
         # print(f"clicked_total_emb.shape: {clicked_total_emb.shape}")
 
         # user_emb = self.user_encoder(clicked_total_emb, mask)
         user_common_emb = self.user_encoder(clicked_common_emb, mask)
-        user_emb = self.user_total_encoder(user_common_emb, user_event_emb)
+        user_emb = self.user_total_encoder(user_common_emb, user_event_emb, clicked_key_entity_final_emb)
 
         # ----------------------------------------- Candidate------------------------------------
         cand_title_emb = self.local_news_encoder(candidate_news)                                      # [8, 5, 400]
@@ -244,8 +285,8 @@ class GLORY(nn.Module):
             abs_origin_entity, abs_neighbor_entity = candidate_abs_entity.split(
                 [self.cfg.model.entity_size, self.cfg.model.entity_size * self.cfg.model.entity_neighbors], dim=-1)
 
-            cand_abs_origin_entity_emb = self.local_entity_encoder(abs_origin_entity, None)
-            cand_abs_neighbor_entity_emb = self.global_entity_encoder(abs_neighbor_entity, abs_entity_mask)
+            cand_abs_origin_entity_emb = self.local_abs_entity_encoder(abs_origin_entity, None)
+            cand_abs_neighbor_entity_emb = self.global_abs_entity_encoder(abs_neighbor_entity, abs_entity_mask)
         else:
             cand_abs_origin_entity_emb, cand_abs_neighbor_entity_emb = None, None
 
@@ -267,12 +308,16 @@ class GLORY(nn.Module):
         else:
             cand_event_emb = None
 
+        if self.use_key_entity:
+            cand_key_entity_emb = self.key_entity_encoder(candidate_key_entity, candidate_key_entity_mask)
+        else:
+            cand_key_entity_emb = None
 
         # print("FINISH LINE 182")
         cand_final_emb = self.candidate_encoder(cand_title_emb, cand_origin_entity_emb, cand_neighbor_entity_emb,
                                                 cand_abs_origin_entity_emb, cand_abs_neighbor_entity_emb,
                                                 cand_origin_subcategory_emb, cand_neighbor_subcategory_emb,
-                                                cand_event_emb)
+                                                cand_event_emb, cand_key_entity_emb)
 
         # ----------------------------------------- Score ------------------------------------
         score = self.click_predictor(cand_final_emb, user_emb)
@@ -280,7 +325,7 @@ class GLORY(nn.Module):
 
         return loss, score
 
-    def validation_process(self, subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_abs_entity, candidate_abs_entity, cand_abs_entity_mask, clicked_subcategory, candidate_subcategory, clicked_event, candidate_event, clicked_event_mask):
+    def validation_process(self, subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_abs_entity, candidate_abs_entity, cand_abs_entity_mask, clicked_subcategory, candidate_subcategory, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity=None, clicked_key_entity_mask=None, candidate_key_entity=None, candidate_key_entity_mask=None):
         
         batch_size, num_news, news_dim = 1, len(mappings), candidate_emb.shape[-1]
 
@@ -295,7 +340,7 @@ class GLORY(nn.Module):
             clicked_entity_emb = None
 
         if self.use_abs_entity:
-            clicked_abs_entity_emb = self.local_entity_encoder(clicked_abs_entity.unsqueeze(0), None)
+            clicked_abs_entity_emb = self.local_abs_entity_encoder(clicked_abs_entity.unsqueeze(0), None)
         else:
             clicked_abs_entity_emb = None
 
@@ -353,13 +398,28 @@ class GLORY(nn.Module):
             user_event_emb = None
 
 
+        # print(f"[val] clicked_key_entity.shape: {clicked_key_entity.shape}") # [50, 8, 100]
+        # print(f"[val] clicked_Key_entity_mask.shape: {clicked_key_entity_mask.shape}") # [50, 8]
+        clicked_key_entity_padding_news_mask = (clicked_key_entity_mask.sum(dim=1) != 0)
+        # print(f"[train] clicked_key_entity_emb_mask: {clicked_key_entity_padding_news_mask}")
+        # print(f"[val] clicked_key_entity_padding_news_mask.shape: {clicked_key_entity_padding_news_mask.shape}") # [50]
+        if self.use_key_entity:
+            clicked_key_entity_emb = self.key_entity_encoder(clicked_key_entity.unsqueeze(0), clicked_key_entity_mask.unsqueeze(0))
+        else:
+            clicked_key_entity_emb = None
+        # print(f"clicked_key_entity.shape: {clicked_key_entity.shape}")
+        # print(f"clicked_key_entity_emb.shape: {clicked_key_entity_emb.shape}")
+        # print(f"clicked_origin_emb.shape: {clicked_origin_emb.shape}")
+        # print(f"clicked_entity_emb.shape: {clicked_entity_emb.shape}")
+        # print(f"[val] clicked_key_entity_emb.shape: {clicked_key_entity_emb.shape}")
         clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb, clicked_abs_entity_emb, clicked_subcategory_emb)
         # TODO clicked_final_emb + clicked_event_emb
         # clicked_final_emb = self.click_total_encoder(clicked_common_emb, clicked_event_emb)
+        clicked_key_entity_final_emb = self.key_entity_attention(clicked_key_entity_emb, clicked_key_entity_padding_news_mask.unsqueeze(0))
 
         # user_emb = self.user_encoder(clicked_final_emb)  # [1, 400]
         user_common_emb = self.user_encoder(clicked_common_emb)
-        user_emb = self.user_total_encoder(user_common_emb, user_event_emb)
+        user_emb = self.user_total_encoder(user_common_emb, user_event_emb, clicked_key_entity_final_emb)
 
 
         # ----------------------------------------- Candidate------------------------------------
@@ -381,8 +441,8 @@ class GLORY(nn.Module):
             abs_entity_mask = cand_abs_entity_mask.unsqueeze(0)
             origin_abs_entity, abs_neighbor_entity = cand_abs_entity_input.split([self.cfg.model.entity_size, self.cfg.model.entity_size * self.cfg.model.entity_neighbors], dim=-1)
 
-            cand_origin_abs_entity_emb = self.local_entity_encoder(origin_abs_entity, None)
-            cand_neighbor_abs_entity_emb = self.global_entity_encoder(abs_neighbor_entity, abs_entity_mask)
+            cand_origin_abs_entity_emb = self.local_abs_entity_encoder(origin_abs_entity, None)
+            cand_neighbor_abs_entity_emb = self.global_abs_entity_encoder(abs_neighbor_entity, abs_entity_mask)
 
         else:
             cand_origin_abs_entity_emb, cand_neighbor_abs_entity_emb = None, None
@@ -406,13 +466,17 @@ class GLORY(nn.Module):
         #     cand_event_emb = self.event_encoder(candidate_event, None)
         # else:
         #     cand_event_emb = None
+        if self.use_key_entity:
+            cand_key_entity_emb = self.key_entity_encoder(candidate_key_entity.unsqueeze(0), candidate_key_entity_mask.unsqueeze(0))
+        else:
+            cand_key_entity_emb = None
 
         cand_event_emb = candidate_event.unsqueeze(0)
 
         cand_final_emb = self.candidate_encoder(candidate_emb.unsqueeze(0), cand_origin_entity_emb, cand_neighbor_entity_emb,
                                                 cand_origin_abs_entity_emb, cand_neighbor_abs_entity_emb,
                                                 cand_origin_subcategory_emb, cand_neighbor_subcategory_emb,
-                                                cand_event_emb)
+                                                cand_event_emb, cand_key_entity_emb)
         # ---------------------------------------------------------------------------------------
         # ----------------------------------------- Score ------------------------------------
         scores = self.click_predictor(cand_final_emb, user_emb).view(-1).cpu().tolist()

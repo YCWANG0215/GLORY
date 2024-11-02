@@ -7,7 +7,7 @@ import numpy as np
 
 
 class TrainDataset(IterableDataset):
-    def __init__(self, filename, news_index, news_input, local_rank, cfg, event_index, event_input):
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, event_index, event_input, key_entity_input, key_entity_input_mask):
         super().__init__()
         self.filename = filename
         self.news_index = news_index
@@ -19,11 +19,18 @@ class TrainDataset(IterableDataset):
         self.event_index = event_index
         self.event_input = event_input
 
+        # self.key_entity_index = key_entity_index
+        self.key_entity_input = key_entity_input
+        self.key_entity_input_mask = key_entity_input_mask
+
     def trans_to_nindex(self, nids):
         return [self.news_index[i] if i in self.news_index else 0 for i in nids]
 
     def trans_to_event_nindex(self, nids):
         return [self.event_index[i] if i in self.event_index else 0 for i in nids]
+
+    # def trans_to_key_entity_nindex(self, nids):
+    #     return [self.key_entity_index[i] if i in self.key_entity_index else 0 for i in nids]
 
     def pad_to_fix_len(self, x, fix_length, padding_front=True, padding_value=0):
         if padding_front:
@@ -56,8 +63,9 @@ class TrainDataset(IterableDataset):
     
     
 class TrainGraphDataset(TrainDataset):
-    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, abs_entity_neighbors, subcategory_neighbors, event_index, event_input, key_entity):
-        super().__init__(filename, news_index, news_input, local_rank, cfg, event_index, event_input)
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, abs_entity_neighbors, subcategory_neighbors, event_index, event_input, key_entity_input, key_entity_input_mask):
+        super().__init__(filename, news_index, news_input, local_rank, cfg, event_index, event_input, key_entity_input, key_entity_input_mask)
+        self.cfg = cfg
         self.neighbor_dict = neighbor_dict
         self.news_graph = news_graph.to(local_rank, non_blocking=True)
 
@@ -71,7 +79,13 @@ class TrainGraphDataset(TrainDataset):
         self.event_index = event_index
         self.event_input = event_input
 
-        self.key_entity = key_entity
+        # self.key_entity_index = key_entity_index
+        self.key_entity_input = key_entity_input # np array
+        self.key_entity_input_mask = key_entity_input_mask
+        # print(f"type(key_entity_input) = {type(key_entity_input)}") # np array
+        # print(f"type(key_entity_input_mask) = {type(key_entity_input_mask)}") # dict
+        # print(f"key_entity_input_mask.keys: {self.key_entity_input_mask.keys}")
+        # print(f"{25632 in self.key_entity_input_mask}")
         # for key in self.subcategory_neighbors:
         #     self.subcategory_neighbors[key] = torch.tensor(self.subcategory_neighbors[key], dtype=torch.int64)
 
@@ -88,6 +102,8 @@ class TrainGraphDataset(TrainDataset):
         top_k = len(click_id)
         # 把新闻id转换为内部索引
         click_idx = self.trans_to_nindex(click_id)
+        original_click_idx = click_idx
+
         # 初始化源索引为点击新闻的索引
         source_idx = click_idx
         # 迭代 k_hops 次，从点击的新闻出发，扩展邻居新闻
@@ -120,6 +136,41 @@ class TrainGraphDataset(TrainDataset):
         clicked_event_mask = None
         candidate_event = None
 
+        clicked_key_entity = None
+        clicked_key_entity_mask = None
+        candidate_key_entity = None
+        candidate_key_entity_mask = None
+        # ------------------- Key Entity ----------------
+        # if self.cfg.model.use_key_entity and clicked_key_entity is not None:
+        # key_entity_input: {新闻id: 实体序号}
+        # key_entity_emb = np.zeros(shape=(len(key_entities)+1, cfg.model.key_entity_size, target_dim))
+
+        # cfg.his_size条新闻，每个新闻cfg.key_entity_size个key_entity，每个key_entity 100维
+        # cfg.his_size条新闻，每个新闻1个key_entity_mask，每个key_entity_mask cfg.key_entity_size维
+        # clicked_news_num = len(click_id)
+        # original_len = len(original_click_idx)
+        clicked_key_entity = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size, 100))
+        clicked_key_entity_mask = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size))
+        # clicked_news_mask = np.zeros(shape=self.cfg.model.his_size)
+        # print(f"len(key_entity_input_mask) = {self.key_entity_input_mask}")
+        # print(f"type(key_entity_input_mask = {type(self.key_entity_input_mask)})")
+        if self.cfg.model.use_key_entity:
+            # 对于每条实际点击的新闻，抓出其中的key_entity
+            for idx, _click_idx in enumerate(original_click_idx):
+                if idx == 50: break
+                # print(f"key_entity_input.shape: {self.key_entity_input.shape}") # (51283, 8, 100)
+                # print(f"key_entity_input_mask.shape: {self.key_entity_input_mask.shape}") # (51283, 8)
+                clicked_key_entity[idx] = self.key_entity_input[_click_idx]
+                clicked_key_entity_mask[idx] = self.key_entity_input_mask[_click_idx]
+
+            # print(f"[Dataset-Train]: clicked_key_entity = {clicked_key_entity}")
+                # clicked_news_mask[idx] = 1
+            # clicked_key_entity_mask[idx] = clicked_key_entity[idx] == 0
+        # else:
+            # clicked_key_entity = np.zeros(1)
+            # clicked_key_entity_mask = np.zeros(1)
+
+        # ------------------- Event ---------------------
         if self.cfg.model.use_event:
             # 当前用户最多有topK条浏览记录，如果超过topK截断为topK，不足topK则填充到cfg.model.his_size
             # click_event_idx = self.trans_to_nindex(click_id)
@@ -135,13 +186,12 @@ class TrainGraphDataset(TrainDataset):
             # print(f"clicked_event_input: {clicked_event}")
 
 
-        # ------------------ Key Entity -----------------
-        if self.cfg.model.use_key_entity:
-            clicked_key_entity = []
-            for clicked in click_id:
-                if self.key_entity:
-                    for ke in self.key_entity[clicked]:
-                        clicked_key_entity.append(ke)
+        # if self.cfg.model.use_key_entity:
+        #     clicked_key_entity = []
+        #     for clicked in click_id:
+        #         if self.key_entity:
+        #             for ke in self.key_entity[clicked]:
+        #                 clicked_key_entity.append(ke)
             # print(f"[train] clicked key_entity: {clicked_key_entity}")
 
 
@@ -166,18 +216,18 @@ class TrainGraphDataset(TrainDataset):
             candidate_event = self.event_input[sample_events]
             # print(f"[train] sample_events: {sample_events}")
             # print(f"[train] candidate_event: {candidate_event}")
+        else:
+            candidate_event = None
 
         # ------------------ Key Entity ---------------------
         if self.cfg.model.use_key_entity:
-            origin_cand_id = sess_pos + sess_neg
-            candidate_key_entity = []
-            for candidate_cnt, candidate_news in enumerate(origin_cand_id):
-                # print(f"key_entity: {self.key_entity}")
-                # print(f"candidate_news: {candidate_news}")
-                # print(f"len(key_entity): {len(self.key_entity)}")
-                candidate_key_entity.append(self.key_entity[candidate_news])
-            # print(f"[train] candidate key_entity: {candidate_key_entity}")
+            candidate_key_entity = self.key_entity_input[sample_news]
+            candidate_key_entity_mask = self.key_entity_input_mask[sample_news]
 
+        else:
+            candidate_key_entity = np.zeros(1)
+            candidate_key_entity_mask = np.zeros(1)
+        # print(f"candidate_key_entity: {candidate_key_entity}")
         # ------------------ Entity Subgraph --------------------
         if self.cfg.model.use_entity:
             # 提取候选新闻的实体部分，大小为 [batch_size, entity_size]
@@ -204,26 +254,29 @@ class TrainGraphDataset(TrainDataset):
             # print(f"type(candidate_entity) = {type(candidate_entity)}")
             # print(f"candidate_entity: {candidate_entity}")
 
-            # --------------Abstract Entity Graph-----------------
-            if self.cfg.model.use_abs_entity:
-                origin_abs_entity = candidate_input[:, -5:]
-                # print(f"origin_abs_entity: {origin_abs_entity}")
-                candidate_abs_neighbor_entity = np.zeros(((self.cfg.npratio+1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64)
-                for cnt, idx in enumerate(origin_abs_entity.flatten()):
-                    if idx == 0: continue
-                    abs_entity_dict_length = len(self.abs_entity_neighbors[idx])
-                    if abs_entity_dict_length == 0: continue
-                    valid_len = min(abs_entity_dict_length, self.cfg.model.entity_neighbors)
-                    candidate_abs_neighbor_entity[cnt, :valid_len] = self.abs_entity_neighbors[idx][:valid_len]
-                candidate_abs_neighbor_entity = candidate_abs_neighbor_entity.reshape(self.cfg.npratio+1, self.cfg.model.entity_size *self.cfg.model.entity_neighbors)
-                abs_entity_mask = candidate_abs_neighbor_entity.copy()
-                entity_mask[abs_entity_mask > 0] = 1
-                abs_candidate_entity = np.concatenate((origin_abs_entity, candidate_abs_neighbor_entity), axis=-1)
                 # print(f"abs_candidate_entity: {abs_candidate_entity}")
         else:
             candidate_entity = np.zeros(1)
             entity_mask = np.zeros(1)
 
+        # --------------Abstract Entity Graph-----------------
+        if self.cfg.model.use_abs_entity:
+            origin_abs_entity = candidate_input[:, -5:]
+            # print(f"origin_abs_entity: {origin_abs_entity}")
+            candidate_abs_neighbor_entity = np.zeros(
+                ((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors),
+                dtype=np.int64)
+            for cnt, idx in enumerate(origin_abs_entity.flatten()):
+                if idx == 0: continue
+                abs_entity_dict_length = len(self.abs_entity_neighbors[idx])
+                if abs_entity_dict_length == 0: continue
+                valid_len = min(abs_entity_dict_length, self.cfg.model.entity_neighbors)
+                candidate_abs_neighbor_entity[cnt, :valid_len] = self.abs_entity_neighbors[idx][:valid_len]
+            candidate_abs_neighbor_entity = candidate_abs_neighbor_entity.reshape(self.cfg.npratio + 1,
+                                                                                  self.cfg.model.entity_size * self.cfg.model.entity_neighbors)
+            abs_entity_mask = candidate_abs_neighbor_entity.copy()
+            abs_entity_mask[abs_entity_mask > 0] = 1
+            abs_candidate_entity = np.concatenate((origin_abs_entity, candidate_abs_neighbor_entity), axis=-1)
 
         # ------------------Subcategory Graph-------------------
         if self.cfg.model.use_subcategory_graph:
@@ -255,9 +308,6 @@ class TrainGraphDataset(TrainDataset):
                 # print(f"candidate_neighbor_subcategory valid len: {valid_len}")
                 candidate_neighbor_subcategory[cnt, :valid_len] = self.subcategory_neighbors[idx_tuple[0]][:valid_len]
                 # print(f"candidate_neighbor_subcategory of subcategory idx{sub_idx}: {self.subcategory_neighbors[idx_tuple[0]][:valid_len]}")
-
-
-
             # TODO ?
             candidate_neighbor_subcategory.reshape(self.cfg.npratio+1, self.cfg.model.subcategory_neighbors)
             # print(f"type(origin_subcategory): {type(origin_subcategory)}")
@@ -268,6 +318,8 @@ class TrainGraphDataset(TrainDataset):
             # subcategories = torch.tensor(subcategories, dtype=torch.int64)
             # print(f"type(subcategories) = {type(subcategories)}")
             # print(f"subcategories: {subcategories}")
+        else:
+            subcategories = None
 
         # return sub_news_graph, padded_maping_idx, candidate_input, candidate_entity, entity_mask, label, \
         #        sum_num_news+sub_news_graph.num_nodes
@@ -278,7 +330,7 @@ class TrainGraphDataset(TrainDataset):
         # TODO 改变返回参数
         return sub_news_graph, padded_maping_idx, candidate_input, candidate_entity, entity_mask, label, \
             sum_num_news + sub_news_graph.num_nodes, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, \
-            clicked_key_entity, candidate_key_entity
+            clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask
 
     def build_subgraph(self, subset, k, sum_num_nodes):
         # k: 选择的前k个结点
@@ -321,13 +373,15 @@ class TrainGraphDataset(TrainDataset):
             candidate_event_list = []
             clicked_event_mask_list = []
             clicked_key_entity_list = []
+            clicked_key_entity_mask_list = []
             candidate_key_entity_list = []
+            candidate_key_entity_mask_list = []
 
             sum_num_news = 0
             with open(self.filename) as f:
                 for line in f:
                     # if line.strip().split('\t')[3]:
-                    sub_newsgraph, padded_mapping_idx, candidate_input, candidate_entity, entity_mask, label, sum_num_news, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, candidate_key_entity = self.line_mapper(line, sum_num_news)
+                    sub_newsgraph, padded_mapping_idx, candidate_input, candidate_entity, entity_mask, label, sum_num_news, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask = self.line_mapper(line, sum_num_news)
 
                     clicked_graphs.append(sub_newsgraph)
                     candidates.append(torch.from_numpy(candidate_input))
@@ -342,6 +396,19 @@ class TrainGraphDataset(TrainDataset):
                     clicked_event_list.append(torch.from_numpy(clicked_event))
                     candidate_event_list.append(torch.from_numpy(candidate_event))
                     clicked_event_mask_list.append(torch.from_numpy(clicked_event_mask))
+
+                    # if len(clicked_key_entity_list) > 0:
+                    clicked_key_entity_list.append(torch.from_numpy(clicked_key_entity))
+                    clicked_key_entity_mask_list.append(torch.from_numpy(clicked_key_entity_mask))
+                    # if len(candidate_key_entity_list) > 0:
+                    candidate_key_entity_list.append(torch.from_numpy(candidate_key_entity))
+                    candidate_key_entity_mask_list.append(torch.from_numpy(candidate_key_entity_mask))
+                    # if candidate_key_entity_mask is None:
+                    #     candidate_key_entity_mask = np.zeros(1)
+                    # print(f"candidate_key_entity = {candidate_key_entity}")
+                    # print(f"candidate_key_entity_mask: {candidate_key_entity_mask}")
+                    # candidate_key_entity_list.append(torch.from_numpy(candidate_key_entity))
+                    # candidate_key_entity_mask_list.append(torch.from_numpy(candidate_key_entity_mask))
 
                     if abs_candidate_entity is not None:
                         candidate_abs_entity_list.append(torch.from_numpy(abs_candidate_entity))
@@ -363,6 +430,13 @@ class TrainGraphDataset(TrainDataset):
                         clicked_event_list = torch.stack(clicked_event_list)
                         candidate_event_list = torch.stack(candidate_event_list)
 
+                        # if len(clicked_key_entity_list) > 0:
+                        clicked_key_entity_list = torch.stack(clicked_key_entity_list)
+                        clicked_key_entity_mask_list = torch.stack(clicked_key_entity_mask_list)
+                        # if len(candidate_key_entity_list) > 0:
+                        candidate_key_entity_list = torch.stack(candidate_key_entity_list)
+                        candidate_key_entity_mask_list = torch.stack(candidate_key_entity_mask_list)
+
                         if len(candidate_abs_entity_list) != 0:
                             candidate_abs_entity_list = torch.stack(candidate_abs_entity_list)
                             abs_entity_mask_list = torch.stack(abs_entity_mask_list)
@@ -370,8 +444,8 @@ class TrainGraphDataset(TrainDataset):
                             candidate_subcategory_list = torch.stack(candidate_subcategory_list)
 
                         labels = torch.tensor(labels, dtype=torch.long)
-                        yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity, candidate_key_entity
-                        clicked_graphs, mappings ,candidates, labels, candidate_entity_list, entity_mask_list, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity, candidate_key_entity  = [], [], [], [], [], [], [], [], [], [], [], [], [], []
+                        yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list
+                        clicked_graphs, mappings ,candidates, labels, candidate_entity_list, entity_mask_list, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list  = [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
                         sum_num_news = 0
 
                 if (len(clicked_graphs) > 0):
@@ -384,6 +458,12 @@ class TrainGraphDataset(TrainDataset):
                     clicked_event_list = torch.stack(clicked_event_list)
                     candidate_event_list = torch.stack(candidate_event_list)
                     clicked_event_mask_list = torch.stack(clicked_event_mask_list)
+
+                    clicked_key_entity_list = torch.stack(clicked_key_entity_list)
+                    clicked_key_entity_mask_list = torch.stack(clicked_key_entity_mask_list)
+                    candidate_key_entity_list = torch.stack(candidate_key_entity_list)
+                    candidate_key_entity_mask_list = torch.stack(candidate_key_entity_mask_list)
+
                     labels = torch.tensor(labels, dtype=torch.long)
                     if len(candidate_abs_entity_list) != 0:
                         candidate_abs_entity_list = torch.stack(candidate_abs_entity_list)
@@ -391,18 +471,19 @@ class TrainGraphDataset(TrainDataset):
                     if len(candidate_subcategory_list) != 0:
                         candidate_subcategory_list = torch.stack(candidate_subcategory_list)
 
-                    yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity, candidate_key_entity
+                    yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels, candidate_abs_entity_list, abs_entity_mask_list, candidate_subcategory_list, clicked_event_list, candidate_event_list, clicked_event_mask_list, clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list
                     f.seek(0)
 
 
 class ValidGraphDataset(TrainGraphDataset):
-    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, news_entity, abs_entity_neighbors, news_abs_entity, subcategory_neighbors, news_subcategory, event_index, event_input, key_entity):
-        super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, abs_entity_neighbors, subcategory_neighbors, event_index, event_input, key_entity)
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, news_entity, abs_entity_neighbors, news_abs_entity, subcategory_neighbors, news_subcategory, event_index, event_input, key_entity_input, key_entity_input_mask):
+        super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, abs_entity_neighbors, subcategory_neighbors, event_index, event_input, key_entity_input, key_entity_input_mask)
         self.news_graph.x = torch.from_numpy(self.news_input).to(local_rank, non_blocking=True)
         self.news_entity = news_entity
         self.news_abs_entity = news_abs_entity
         self.news_subcategory = news_subcategory
-
+        # self.key_entity_input = key_entity_input
+        # self.key_entity_input_mask = key_entity_input_mask
 
     def line_mapper(self, line):
 
@@ -410,33 +491,54 @@ class ValidGraphDataset(TrainGraphDataset):
         click_id = line[3].split()[-self.cfg.model.his_size:]
         # print(f"click_id = {click_id}")
         click_idx = self.trans_to_nindex(click_id)
+        original_click_idx = click_idx
         # print(f"click_idx = {click_idx}")
         clicked_entity = self.news_entity[click_idx]
         clicked_abs_entity = self.news_abs_entity[click_idx]
         clicked_subcategory = self.news_subcategory[click_idx]
 
-        clicked_event, candidate_event, clicked_key_entity, candidate_key_entity = None, None, None, None
+        clicked_event, clicked_event_mask, candidate_event, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask = None, None, None, None, None, None, None
         # -------------------- Event --------------------
         # nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict,
         #                                        category_dict, subcategory_dict, event_dict)
         # event_input = np.concatenate([x for x in nltk_event_features], axis=1)
         # click_idx = self.trans_to_nindex(click_id)
-        clicked_event = None
-        clicked_event_mask = None
-        candidate_event = None
+        # clicked_event = None
+        # clicked_event_mask = None
+        # candidate_event = None
 
+        # ------------------ Key Entity -----------------
+        # if self.cfg.model.use_key_entity:
+        #     clicked_key_entity = self.key_entity_input[click_idx]
+        #     clicked_key_entity_mask = self.key_entity_input_mask[click_idx]
+
+        clicked_key_entity = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size, 100))
+        clicked_key_entity_mask = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size))
+        # clicked_news_mask = np.zeros(shape=self.cfg.model.his_size)
+        # print(f"len(key_entity_input_mask) = {self.key_entity_input_mask}")
+        # print(f"type(key_entity_input_mask = {type(self.key_entity_input_mask)})")
+        if self.cfg.model.use_key_entity:
+            # 对于每条实际点击的新闻，抓出其中的key_entity
+            for idx, _click_idx in enumerate(original_click_idx):
+                if idx == 50: break
+                # print(f"key_entity_input.shape: {self.key_entity_input.shape}") # (51283, 8, 100)
+                # print(f"key_entity_input_mask.shape: {self.key_entity_input_mask.shape}") # (51283, 8)
+                clicked_key_entity[idx] = self.key_entity_input[_click_idx]
+                clicked_key_entity_mask[idx] = self.key_entity_input_mask[_click_idx]
+        # print(f"[Dataset-Val]: clicked_key_entity: {clicked_key_entity}")
+
+        # ------------------ Event -----------------
         if self.cfg.model.use_event:
             clicked_event_index, clicked_event_mask = self.pad_to_fix_len(self.trans_to_event_nindex(click_id),
                                                                           self.cfg.model.his_size)
             clicked_event = self.event_input[clicked_event_index]
 
-        # ------------------ Key Entity -----------------
-        if self.cfg.model.use_key_entity:
-            clicked_key_entity = []
-            for clicked in click_id:
-                if self.key_entity:
-                    for ke in self.key_entity[clicked]:
-                        clicked_key_entity.append(ke)
+        # if self.cfg.model.use_key_entity:
+        #     clicked_key_entity = []
+        #     for clicked in click_id:
+        #         if self.key_entity:
+        #             for ke in self.key_entity[clicked]:
+        #                 clicked_key_entity.append(ke)
             # print(f"[val] clicked key_entity: {clicked_key_entity}")
 
 
@@ -471,7 +573,7 @@ class ValidGraphDataset(TrainGraphDataset):
 
 
         if self.cfg.model.use_event:
-            val_event = [i.split('-')[0] for i in line[4].split()]
+            # val_event = [i.split('-')[0] for i in line[4].split()]
             # print(f"[val] val_event = {val_event}")
             sample_events = self.trans_to_event_nindex([i.split('-')[0] for i in line[4].split()])
             # print(f"[val] sample_events = {sample_events}")
@@ -488,8 +590,22 @@ class ValidGraphDataset(TrainGraphDataset):
         #     for candidate_cnt, candidate_news in enumerate(origin_cand_id):
         #         candidate_key_entity.append(self.key_entity[candidate_news])
             # print(f"[val] candidate key_entity: {candidate_key_entity}")
+        if self.cfg.model.use_key_entity:
+            candidate_key_entity = self.key_entity_input[candidate_index]
+            candidate_key_entity_mask = self.key_entity_input_mask[candidate_index]
+            # if len(sample_key_entity) > self.cfg.model.key_entity_size:
+            #     sample_key_entity = sample_key_entity[-self.cfg.model.key_entity_size:]
+            # candidate_key_entity = self.key_entity_input[sample_key_entity]
+            # candidate_key_entity_mask = candidate_key_entity != 0
+            # print(f"candidate_key_entity: {candidate_key_entity}")
+        # if self.cfg.model.use_key_entity:
+        #     candidate_key_entity = self.key_entity_input[sample_news]
+        #     candidate_key_entity_mask = self.key_entity_input_mask[sample_news]
 
-
+        else:
+            candidate_key_entity = np.zeros(1)
+            candidate_key_entity_mask = np.zeros(1)
+        # print(f"[Dataset-Val]: candidate_key_entity = {candidate_key_entity}")
         if self.cfg.model.use_entity:
             origin_entity = self.news_entity[candidate_index]
             candidate_neighbor_entity = np.zeros((len(candidate_index)*self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64)
@@ -574,13 +690,13 @@ class ValidGraphDataset(TrainGraphDataset):
 
         batch = Batch.from_data_list([sub_news_graph])
 
-        return batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask
+        return batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask
     
     def __iter__(self):
         for line in open(self.filename):
             if line.strip().split('\t')[3]:
-                batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask = self.line_mapper(line)
-            yield batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask
+                batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask = self.line_mapper(line)
+            yield batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask
 
 
 class NewsDataset(Dataset):

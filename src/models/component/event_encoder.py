@@ -58,7 +58,7 @@ class EventEncoder(nn.Module):
         ])
 
         self.subcategory_encoder = Sequential('x', [
-            (nn.Embedding(cfg.model.subcategory_size + 1, self.event_type_dim), 'x->x'),
+            (nn.Embedding(cfg.model.subcategory_size + 2, self.event_type_dim), 'x->x'),
             (nn.Linear(self.event_type_dim, 300), 'x->x'),
             (nn.LeakyReLU(0.2), 'x->x')
         ])

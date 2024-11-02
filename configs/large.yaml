@@ -9,7 +9,8 @@ defaults:
   - _self_
 
 optimizer:
-  lr: 0.0002 
+#  lr: 0.0002
+  lr: 0.00006
 
 num_epochs: 5
 batch_size: 32            # dataloaders'batch_size = batch_size / gpu_num
@@ -31,9 +32,19 @@ model:
   directed: true
   num_neighbors: 8
   k_hops: 2
+  use_abs_entity: true
+  use_subcategory_graph: true
+  subcategory_neighbors: 5
+  use_event: true
+  event_use_abs_extraction: false
+  use_key_entity: true
+  subcategory_size: 286
+  event_dict_size: 52
+  key_entity_size: 8
+  gru_layer_num: 1
 
 logger:
-  exp_name: GLORY
+  exp_name: FullModelLarge
   run_name: ${model.model_name}_${dataset.dataset_name}_${model.k_hops}-${model.num_neighbors}-${model.entity_neighbors}
 
 ml_label: default

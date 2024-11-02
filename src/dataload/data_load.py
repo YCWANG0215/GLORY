@@ -10,6 +10,11 @@ import pickle
 
 from dataload.dataset import *
 
+from utils.common import load_pretrain_emb
+
+from utils.common import load_key_entity_emb
+
+
 def load_data(cfg, mode='train', model=None, local_rank=0):
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
 
@@ -21,12 +26,23 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
     event_index = pickle.load(open(Path(data_dir[mode]) / "event_dict.bin", "rb"))
     # print(f"len(event_dict) = {len(event_index)}")
     event_input = pickle.load(open(Path(data_dir[mode]) / "nltk_token_event.bin", "rb"))
+    event_type_dict = pickle.load(open(Path(data_dir[mode]) / "event_type_dict.bin", "rb"))
+    # print(f"event_type_dict.len: {len(event_type_dict)}")
     # print(f"event_input.shape = {event_input.shape}")
-    key_entity = pickle.load(open(Path(data_dir[mode]) / "key_entity_dict.bin", "rb"))
+    # key_entity_dict = pickle.load(open(Path(data_dir[mode]) / "key_entity_dict.bin", "rb"))
+    key_entities = pickle.load(open(Path(data_dir[mode]) / "key_entities.bin", "rb"))
+    # print(f"len(key_entities) = {len(key_entities)}")
+    # key_entity_input_mask = pickle.load(open(Path(data_dir[mode]) / "key_entities_mask.bin", "rb"))
 
+    entity_emb_path = Path(cfg.dataset.val_dir) / "combined_entity_embedding.vec"
+
+    # key_entity_emb = None
+    # config = cfg
     # print(f"news_input.shape = {news_input.shape}")
     # ------------- load behaviors_np{X}.tsv --------------
     if mode == 'train':
+        key_entity_input, key_entity_input_mask = load_key_entity_emb(cfg, mode, 100, key_entities, news_index)
+        # print(f"[Data_load-load_data]: key_entity_input: {key_entity_input}")
         target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv"
         # target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv"
         if cfg.model.use_graph:
@@ -39,11 +55,11 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
 
-            if cfg.model.use_event:
-                event_graph = torch.load(Path(data_dir[mode]) / "nltk_event_graph.pt")
-                if cfg.model.directed is False:
-                    event_graph.edge_index, event_graph.edge_attr = to_undirected(event_graph.edge_index, event_graph.edge_attr)
-                print(f"[{mode}] Event Graph Info: {event_graph}")
+            # if cfg.model.use_event:
+            #     event_graph = torch.load(Path(data_dir[mode]) / "nltk_event_graph.pt")
+            #     if cfg.model.directed is False:
+            #         event_graph.edge_index, event_graph.edge_attr = to_undirected(event_graph.edge_index, event_graph.edge_attr)
+            #     print(f"[{mode}] Event Graph Info: {event_graph}")
 
             if cfg.model.use_entity:
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -95,7 +111,9 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 subcategory_neighbors=subcategory_neighbors,
                 event_index=event_index,
                 event_input=event_input,
-                key_entity=key_entity,
+                # key_entity_index=key_entity_dict,
+                key_entity_input=key_entity_input,
+                key_entity_input_mask = key_entity_input_mask
             )
             dataloader = DataLoader(dataset, batch_size=None)
             
@@ -117,6 +135,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
         return dataloader
     elif mode in ['val', 'test']:
         # convert the news to embeddings
+        key_entity_input, key_entity_input_mask = load_key_entity_emb(cfg, mode, 100, key_entities, news_index)
         news_dataset = NewsDataset(news_input)
         news_dataloader = DataLoader(news_dataset,
                                      batch_size=int(cfg.batch_size * cfg.gpu_num),
@@ -234,10 +253,37 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     news_subcategory=news_input[:, -7:-6],
                     event_index=event_index,
                     event_input=events_emb,
-                    key_entity=key_entity,
+                    # key_entity_index=key_entity_dict,
+                    key_entity_input=key_entity_input,
+                    key_entity_input_mask=key_entity_input_mask,
+                )
+            elif mode == 'test':
+                dataset = ValidGraphDataset(
+                    # filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv",
+                    filename=Path(data_dir[mode]) / f"behaviors.tsv",
+                    news_index=news_index,
+                    news_input=news_emb,
+                    local_rank=local_rank,
+                    cfg=cfg,
+                    neighbor_dict=news_neighbors_dict,
+                    news_graph=news_graph,
+                    # TODO change
+                    news_entity=news_input[:, -13:-8],
+                    # news_entity=news_input[:,-8:-3],
+                    entity_neighbors=entity_neighbors,
+                    abs_entity_neighbors=abs_entity_neighbors,
+                    news_abs_entity=news_input[:, -5:],
+                    subcategory_neighbors=subcategory_neighbors,
+                    news_subcategory=news_input[:, -7:-6],
+                    event_index=event_index,
+                    event_input=events_emb,
+                    # key_entity_index=key_entity_dict,
+                    key_entity_input=key_entity_input,
+                    key_entity_input_mask=key_entity_input_mask
                 )
 
             dataloader = DataLoader(dataset, batch_size=None)
+            # dataloader = DataLoader(dataset, batch_size=None, num_workers=cfg.num_workers)
 
         else:
             if mode == 'val':
@@ -266,6 +312,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                                     batch_size=1,
                                     # batch_size=int(cfg.batch_size / cfg.gpu_num),
                                     # pin_memory=True, # collate_fn already puts data to GPU
+                                    # num_workers=cfg.num_workers,
                                     collate_fn=lambda b: collate_fn(b, local_rank))
         return dataloader
 
