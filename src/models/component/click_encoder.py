@@ -52,56 +52,63 @@ class ClickEncoder(nn.Module):
         #          'a,b,c,d -> x'),
         #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
         #     ])
-        if self.use_entity and self.use_abs_entity and self.use_subcategory:
-            self.atte = Sequential('a,b,c,d,e', [
-                (lambda a,b,c,d,e: torch.stack([a,b,c,d,e], dim=-2).view(-1, 5, self.news_dim), 'a,b,c,d,e -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_entity and self.use_abs_entity:
-            self.atte = Sequential('a,b,c,d', [
-                (lambda a, b, c, d: torch.stack([a,b,c,d], dim=-2).view(-1, 4, self.news_dim),
-                 'a,b,c,d -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_entity and self.use_subcategory:
-            self.atte = Sequential('a,b,c,d', [
-                (lambda a, b, c, d: torch.stack([a,b,c,d], dim=-2).view(-1, 4, self.news_dim),
-                 'a,b,c,d -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_abs_entity and self.use_subcategory:
-            self.atte = Sequential('a,b,c,d', [
-                (lambda a, b, c, d, e: torch.stack([a,b,d,e], dim=-2).view(-1, 4, self.news_dim),
-                 'a,b,c,d -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_entity:
-            self.atte = Sequential('a,b,c', [
-                (lambda a,b,c: torch.stack([a,b,c], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_abs_entity:
-            self.atte = Sequential('a,b,c', [
-                (lambda a,b,c,d,e: torch.stack([a,b,d], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        elif self.use_subcategory:
-            self.atte = Sequential('a,b,c', [
-                (lambda a,b,c,d,e: torch.stack([a,b,e], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
-        else:
-            self.atte = Sequential('a,b', [
-                (lambda a,b: torch.stack([a,b], dim=-2).view(-1, 2, self.news_dim), 'a,b -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-            ])
+
+
+        # elif self.use_entity and self.use_abs_entity:
+        #     self.atte = Sequential('a,b,c,d', [
+        #         (lambda a, b, c, d: torch.stack([a,b,c,d], dim=-2).view(-1, 4, self.news_dim),
+        #          'a,b,c,d -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_entity and self.use_subcategory:
+        #     self.atte = Sequential('a,b,c,d', [
+        #         (lambda a, b, c, d: torch.stack([a,b,c,d], dim=-2).view(-1, 4, self.news_dim),
+        #          'a,b,c,d -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_abs_entity and self.use_subcategory:
+        #     self.atte = Sequential('a,b,c,d', [
+        #         (lambda a, b, c, d, e: torch.stack([a,b,d,e], dim=-2).view(-1, 4, self.news_dim),
+        #          'a,b,c,d -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_entity:
+        #     self.atte = Sequential('a,b,c', [
+        #         (lambda a,b,c: torch.stack([a,b,c], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_abs_entity:
+        #     self.atte = Sequential('a,b,c', [
+        #         (lambda a,b,c,d,e: torch.stack([a,b,d], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # elif self.use_subcategory:
+        #     self.atte = Sequential('a,b,c', [
+        #         (lambda a,b,c,d,e: torch.stack([a,b,e], dim=-2).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        # else:
+        #     self.atte = Sequential('a,b', [
+        #         (lambda a,b: torch.stack([a,b], dim=-2).view(-1, 2, self.news_dim), 'a,b -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #     ])
+        self.atte = Sequential('a,b,c', [
+            (lambda a, b, c: torch.stack([a, b, c], dim=1).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+            AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        ])
 
 
 
-
-    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None, click_abs_entity_emb=None, click_subcategory_emb=None, clicked_key_entity_emb=None):
+    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None):
 
         batch_size, num_news = click_title_emb.shape[0], click_title_emb.shape[1]
+        # print("in click_encoder: ")
+        # print(f"clicked_title.shape: {click_title_emb.shape}")
+        # print(f"clicked_graph.shape: {click_graph_emb.shape}")
+        # print(f"clicked_entity.shape: {click_entity_emb.shape}")
+        # print(f"clicked_key_entity.shape: {click_key_entity_emb.shape}")
+
+        # print("over")
         # print(f"click_encoder: batch_size={batch_size}, num_news={num_news}")
         # if click_entity_emb is not None:
         #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb)
@@ -117,26 +124,30 @@ class ClickEncoder(nn.Module):
         #     result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb, click_subcategory_emb)
         # elif click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is None:
         #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb)
-        if click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is not None:
-            # print("exe2")
-            result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb, click_subcategory_emb)
-        elif click_entity_emb is not None and click_abs_entity_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb)
-        elif click_entity_emb is not None and click_subcategory_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_subcategory_emb)
-        elif click_abs_entity_emb is not None and click_subcategory_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb, click_subcategory_emb)
-        elif click_entity_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_entity_emb)
-        elif click_abs_entity_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb)
-        elif click_subcategory_emb is not None:
-            result = self.atte(click_title_emb, click_graph_emb, click_subcategory_emb)
-        else:
-            result = self.atte(click_title_emb, click_graph_emb)
 
-        return result.view(batch_size, num_news, self.news_dim)
-    
+        # if click_entity_emb is not None and click_abs_entity_emb is not None and click_subcategory_emb is not None:
+        #     # print("exe2")
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb, click_subcategory_emb)
+        # elif click_entity_emb is not None and click_abs_entity_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_abs_entity_emb)
+        # elif click_entity_emb is not None and click_subcategory_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, click_subcategory_emb)
+        # elif click_abs_entity_emb is not None and click_subcategory_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb, click_subcategory_emb)
+        # elif click_entity_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_entity_emb)
+        # elif click_abs_entity_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_abs_entity_emb)
+        # elif click_subcategory_emb is not None:
+        #     result = self.atte(click_title_emb, click_graph_emb, click_subcategory_emb)
+        # else:
+        #     result = self.atte(click_title_emb, click_graph_emb)
+
+        result = self.atte(click_title_emb, click_graph_emb, click_entity_emb)
+
+        # return result.view(batch_size, num_news, self.news_dim)
+        return result.view(batch_size, -1, self.news_dim)
+
 
 # class ClickTotalEncoder(nn.Module):
 #     def __init__(self, cfg):

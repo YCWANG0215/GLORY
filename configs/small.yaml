@@ -10,6 +10,7 @@ defaults:
 
 
 
+
 optimizer:
 #  lr: 0.0002
 #  lr: 0.00002
@@ -21,7 +22,7 @@ optimizer:
 
 
 num_epochs: 5
-batch_size: 64            # dataloaders'batch_size = batch_size / gpu_num
+batch_size: 32            # dataloaders'batch_size = batch_size / gpu_num
 accumulation_steps: 1     # final acutal batch_size = batch_size * accumulation_steps
 gpu_num: 1
 
@@ -50,10 +51,16 @@ model:
   use_event: true
   event_use_abs_extraction: false
   use_key_entity: true
-  subcategory_size: 270
+  subcategory_size: 272
   event_dict_size: 50
   key_entity_size: 8
   gru_layer_num: 3
+  use_HieRec: true
+  topic_per_user: 8
+  news_per_topic: 5
+  subtopic_per_user: 15
+  news_per_subtopic: 5
+  word_emb_dim: 300
 
 
 logger:

@@ -52,7 +52,7 @@ class EventEncoder(nn.Module):
         ])
 
         self.event_type_encoder = Sequential('x', [
-            (nn.Embedding(cfg.model.event_dict_size+2, self.event_type_dim), 'x->x'),
+            (nn.Embedding(cfg.model.subcategory_size+20, self.event_type_dim), 'x->x'),
             (nn.Linear(self.event_type_dim, 300), 'x->x'),
             (nn.LeakyReLU(0.2), 'x->x')
         ])
@@ -66,7 +66,7 @@ class EventEncoder(nn.Module):
         self.event_transfer_encoder = EventTransferEncoder()
 
 
-    def forward(self, event_input, event_mask):
+    def forward(self, event_input):
         # print(f"event_input.shape = {event_input.shape}") # [32, 50, 11]
 
         batch_size = event_input.shape[0]
@@ -213,7 +213,7 @@ class EventAttentionEncoder(nn.Module):
 
 
     def forward(self, event_input, event_mask=None):
-        batch_size, num_news, dim = event_input.shape
+        # batch_size, num_news, dim = event_input.shape
         # print(f"event attention encoder: event_input.shape: {event_input.shape}") # [32, 50, 400]
         result = self.event_attention(event_input, event_mask)
         # print(f"event attention encoder: result.shape: {result.shape}") # [32, 400]

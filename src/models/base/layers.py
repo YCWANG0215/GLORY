@@ -47,6 +47,10 @@ class AttentionPooling(nn.Module):
             alpha = alpha * attn_mask.unsqueeze(2)
 
         alpha = alpha / (torch.sum(alpha, dim=1, keepdim=True) + 1e-8)
+        # print(f"x.shape: {x.shape}")
+        # print(f"alpha.shape: {alpha.shape}")
+        # print(f"x.permute(0, 2, 1): {x.permute(0, 2, 1)}")
+        # print(f"alpha: {alpha}")
         x = torch.bmm(x.permute(0, 2, 1), alpha).squeeze(dim=-1)
         return x
 

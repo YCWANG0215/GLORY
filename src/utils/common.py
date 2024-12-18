@@ -33,17 +33,17 @@ def load_model(cfg):
     else:
         entity_emb = None
     
-    if cfg.model.use_abs_entity:
-        abs_entity_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "abs_entity_dict.bin", "rb"))
-        abs_entity_emb_path = Path(cfg.dataset.val_dir) / "combined_entity_embedding.vec"
-        abs_entity_emb = load_pretrain_emb(abs_entity_emb_path, abs_entity_dict, 100)
-    else:
-        abs_entity_emb = None
+    # if cfg.model.use_abs_entity:
+    #     abs_entity_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "abs_entity_dict.bin", "rb"))
+    #     abs_entity_emb_path = Path(cfg.dataset.val_dir) / "combined_entity_embedding.vec"
+    #     abs_entity_emb = load_pretrain_emb(abs_entity_emb_path, abs_entity_dict, 100)
+    # else:
+    #     abs_entity_emb = None
 
-    if cfg.model.use_subcategory_graph:
-        subcategory_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "subcategory_dict.bin", "rb"))
-    else:
-        subcategory_dict = None
+    # if cfg.model.use_subcategory_graph:
+    #     subcategory_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "subcategory_dict.bin", "rb"))
+    # else:
+    #     subcategory_dict = None
 
     # if cfg.model.use_key_entity:
     #     key_entity_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "key_entity_dict.bin", "rb"))
@@ -55,7 +55,7 @@ def load_model(cfg):
     else:
         word_dict = pickle.load(open(Path(cfg.dataset.train_dir) / "word_dict.bin", "rb"))
         glove_emb = len(word_dict)
-    model = framework(cfg, glove_emb=glove_emb, entity_emb=entity_emb, abs_entity_emb=abs_entity_emb, subcategory_dict=subcategory_dict)
+    model = framework(cfg, glove_emb=glove_emb, entity_emb=entity_emb, abs_entity_emb=None, subcategory_dict=None)
 
     return model
 
@@ -150,7 +150,11 @@ def load_key_entity_emb(cfg, mode, target_dim, key_entities, news_dict):
     #         else:
     #             key_entity_emb[news_idx, idx] = entity_emb[entity_id]
     #         idx += 1
-
+    # print(f"in load_key_entity_emb, ")
+    # print(f"key_entity_emb.shape: {key_entity_emb.shape}")
+    # print(f"key_entity_emb_mask.shape: {key_entity_emb_mask.shape}")
+    # print(f"key_entity_emb.dtype: {key_entity_emb.dtype}")
+    # print(f"key_entity_emb_mask.dtype: {key_entity_emb_mask.dtype}")
     return key_entity_emb, key_entity_emb_mask
 
 

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from models.base.layers import *
+from torch import autocast
 from torch_geometric.nn import Sequential
 
 from src.models.base.layers import MultiHeadAttention, AttentionPooling
@@ -31,16 +32,20 @@ class KeyEntityEncoder(nn.Module):
     def forward(self, entity_input, entity_mask=None):
 
         batch_size, num_news, num_entity = entity_input.shape[0], entity_input.shape[1], entity_input.shape[2]
-        # print(f"entity input shape: {entity_input.shape}")
+        # print(f"entity input shape: {entity_input.shape}") # [32, 5, 8, 100]
+        # print(f"entity_mask.shape: {entity_mask.shape}")
         # print(f"entity_input.dtype: {entity_input.dtype}")
-        entity_input = entity_input.float()
+        # print(f"entity_mask.dtype: {entity_mask.dtype}")
+        # entity_input = entity_input.float()
+
         if entity_mask is not None:
             # print(f"entity_mask.dtype: {entity_mask.dtype}")
-            entity_mask = entity_mask.float()
+            entity_mask = entity_mask.half()
             result = self.atte(entity_input.view(batch_size*num_news, num_entity, self.entity_dim), entity_mask.view(batch_size*num_news, num_entity)).view(batch_size, num_news, self.news_dim)
         else:
             result = self.atte(entity_input.view(batch_size*num_news, num_entity, self.entity_dim), None).view(batch_size, num_news, self.news_dim)
         # print(f"entity encoder result shape: {result.shape}")
+        # print(f"result.shape: {result.shape}") # [32, 5, 400]
         return result
 
 

@@ -2,6 +2,7 @@ import os.path
 from pathlib import Path
 
 import hydra
+import numpy
 import wandb
 import numpy as np
 import torch
@@ -30,9 +31,10 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
     sum_loss = torch.zeros(1).to(local_rank)
     sum_auc = torch.zeros(1).to(local_rank)
 
+    # torch.autograd.set_detect_anomaly(True)
 
     # TODO Add event extraction model
-    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask) \
+    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask, clicked_event_mask) \
             in enumerate(tqdm(dataloader,
                               total=int(cfg.num_epochs * (cfg.dataset.pos_count // cfg.batch_size + 1)),
                               desc=f"[{local_rank}] Training"), start=1):
@@ -51,27 +53,42 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
         # print(f"candidate_entity_mask.shape: {entity_mask.shape}")
         clicked_event = clicked_event.to(local_rank, non_blocking=True)
         candidate_event = candidate_event.to(local_rank, non_blocking=True)
-        clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
+        # clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
         # if len(clicked_key_entity) != 0:
-        clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
+        # clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
         # print(f"clicked_key_entity: {clicked_key_entity}")
-        clicked_key_entity_mask = clicked_key_entity_mask.to(local_rank, non_blocking=True).half()
+        # clicked_key_entity_mask = clicked_key_entity_mask.to(local_rank, non_blocking=True)
         # if len(candidate_key_entity) != 0:
-        candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
-        candidate_key_entity_mask = candidate_key_entity_mask.to(local_rank, non_blocking=True)
+        # candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
+        # candidate_key_entity_mask = candidate_key_entity_mask.to(local_rank, non_blocking=True)
         # if len(abs_candidate_entity) != 0:
-        abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
-        abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+
+        # abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+        # abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
         # print(f"in main.py, type(subcategories) = {type(subcategories)}")
         # print(f"in main.py, subcategories: {subcategories}")
         # subcategories = torch.tensor(subcategories)
         # print(f"in main.py, type(subcategories) = {type(subcategories)}")
         # print(f"in main.py, subcategories: {subcategories}")
         # if len(subcategories) != 0:
-        subcategories = subcategories.to(local_rank, non_blocking=True)
+        # subcategories = subcategories.to(local_rank, non_blocking=True)
+        clicked_topic_ids = clicked_topic_ids.to(local_rank, non_blocking=True)
+        clicked_topic_ids_mask = clicked_topic_ids_mask.to(local_rank, non_blocking=True)
+        # clicked_topic_news_ids = clicked_topic_news_ids.to(local_rank, non_blocking=True)
+        # clicked_topic_news_ids_mask = clicked_topic_news_ids_mask.to(local_rank, non_blocking=True)
+        clicked_subtopic_ids = clicked_subtopic_ids.to(local_rank, non_blocking=True)
+        clicked_subtopic_ids_mask = clicked_subtopic_ids_mask.to(local_rank, non_blocking=True)
+        # print(f"clicked_subtopic_news_ids.shape: {clicked_subtopic_news_ids.shape}")
+        clicked_subtopic_news_ids = clicked_subtopic_news_ids.to(local_rank, non_blocking=True)
+        # print(f"[train] clicked_subtopic_news_ids.shape: f{clicked_subtopic_news_ids.shape}")
+
+        clicked_subtopic_news_ids_mask = clicked_subtopic_news_ids_mask.to(local_rank, non_blocking=True)
+        # user_id = user_id.to(local_rank, non_blocking=True)
+        # news_input = news_input.to(local_rank, non_blocking=True)
+        # hetero_graph = hetero_graph.to(local_rank, non_blocking=True)
 
         with amp.autocast():
-            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, abs_candidate_entity, abs_entity_mask, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask)
+            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask)
             
         # Accumulate the gradients
         scaler.scale(bz_loss).backward()
@@ -123,42 +140,86 @@ def val(model, local_rank, cfg):
     dataloader = load_data(cfg, mode='val', model=model, local_rank=local_rank)
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity, abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event, clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask) \
+        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask, clicked_event_mask) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num ),
                                   # total=int(cfg.dataset.val_len / 1 ),
                                   desc=f"[{local_rank}] Validating")):
+            # print(f"clicked_entity.shape: {clicked_entity.shape}")
+            # print(f"candidate_input.shape: {candidate_input.shape}")
+            # print(f"candidate_entity.shape: {candidate_entity.shape}")
+            # print(f"clicked_event.shape: {clicked_event.shape}")
+            # print(f"clicked_topic_ids.shape: {clicked_topic_ids.shape}")
+            # print(f"clicked_topic_ids_mask.shape: {clicked_topic_ids_mask.shape}")
+            # print(f"clicked_subtopic_ids.shape: {clicked_subtopic_ids.shape}")
+            # print(f"clicked_subtopic_ids_mask.shape: {clicked_subtopic_ids_mask.shape}")
+            # print(f"clicked_subtopic_news_ids.shape: {clicked_subtopic_news_ids.shape}")
+            # print(f"clicked_subtopic_news_ids_mask.shape: {clicked_subtopic_news_ids_mask.shape}")
+            # print(f"subgraph.x.shape: {subgraph.x.shape}")
+            # print(f"candidate_input.shape: {candidate_input.shape}")
+            # print(f"clicked_event.shape: {clicked_event.shape}")
+            # print(f"in main, clicked_subtopic_news_ids: {clicked_subtopic_news_ids}")
+            # print(f"[val] clicked_subtopic_news_list.shape: {clicked_subtopic_news_list.shape}")
             candidate_emb = torch.FloatTensor(np.array(candidate_input)).to(local_rank, non_blocking=True)
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
             entity_mask = entity_mask.to(local_rank, non_blocking=True)
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
-            clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
-            clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
+            # clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
+            # clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
+
 
             clicked_event = clicked_event.to(local_rank, non_blocking=True)
             candidate_event = candidate_event.to(local_rank, non_blocking=True)
-            clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
-            if len(clicked_key_entity) != 0:
-                clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
-                clicked_key_entity_mask = clicked_key_entity_mask.to(local_rank, non_blocking=True)
-            if len(candidate_key_entity) != 0:
-                candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
-                candidate_key_entity_mask = candidate_key_entity_mask.to(local_rank, non_blocking=True)
-            if len(abs_candidate_entity) != 0:
-                candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
-            if len(abs_candidate_entity) != 0:
-                abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
-                abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
-            if len(subcategories) != 0:
-                subcategories = subcategories.to(local_rank, non_blocking=True)
+
+            # hie_emb = model.module.hieRec_encoder(clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask)
+            # print(f"hie_emb.shape: {hie_emb.shape}")
+            # clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
+            # if len(clicked_key_entity) != 0:
+            #     clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
+            #     clicked_key_entity_mask = clicked_key_entity_mask.to(local_rank, non_blocking=True)
+            # if len(candidate_key_entity) != 0:
+            #     candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
+            #     candidate_key_entity_mask = candidate_key_entity_mask.to(local_rank, non_blocking=True)
+            # if len(abs_candidate_entity) != 0:
+            #     candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
+            # if len(abs_candidate_entity) != 0:
+            #     abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+            #     abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+            # if len(subcategories) != 0:
+            #     subcategories = subcategories.to(local_rank, non_blocking=True)
+
+            clicked_topic_ids = torch.tensor(clicked_topic_ids).unsqueeze(0).to(local_rank, non_blocking=True)
+            clicked_topic_ids_mask = torch.tensor(clicked_topic_ids_mask).unsqueeze(0).to(local_rank, non_blocking=True)
+            # clicked_topic_news_ids = clicked_topic_news_ids.to(local_rank, non_blocking=True)
+            # clicked_topic_news_ids_mask = clicked_topic_news_ids_mask.to(local_rank, non_blocking=True)
+            clicked_subtopic_ids = torch.tensor(clicked_subtopic_ids).unsqueeze(0).to(local_rank, non_blocking=True)
+            clicked_subtopic_ids_mask = torch.tensor(clicked_subtopic_ids_mask).unsqueeze(0).to(local_rank, non_blocking=True)
+            # shape = [len(_sublist) for _sublist in sublist for sublist in clicked_subtopic_news_ids]
+            # shape = []
+            # for sublist in clicked_subtopic_news_ids:
+            #     for lst in sublist:
+            #         print(f"{len(clicked_subtopic_news_ids)} * {len(sublist)} * {len(lst)}")
+            #     print()
+            # print(f"shape: {shape}")
+            # np_arr = np.array(clicked_subtopic_news_ids)
+            # print(f"np_arr.shape: {np_arr.shape}")
+            clicked_subtopic_news_list = clicked_subtopic_news_list.to(local_rank, non_blocking=True)
+            clicked_subtopic_news_ids_mask = torch.tensor(clicked_subtopic_news_ids_mask).unsqueeze(0).to(local_rank, non_blocking=True)
+            # print(f"clicked_subtopic_news_ids: {clicked_subtopic_news_ids}")
+            # clicked_subtopic_news_lists = torch.tensor(np.array(clicked_subtopic_news_list)).to(local_rank, non_blocking=True)
+            # hetero_graph = hetero_graph.to(local_rank, non_blocking=True)
+            # user_id = user_id.to(local_rank, non_blocking=True)
 
             # print(f"in main.py, clicked_event.shape = {clicked_event}")
+            # print(f"clicked_subtopic_news_ids.shape: {clicked_subtopic_news_ids.shape}")
             scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity,
-                                                     entity_mask, clicked_abs_entity, abs_candidate_entity, abs_entity_mask,
-                                                     clicked_subcategory, subcategories,
-                                                     clicked_event, candidate_event, clicked_event_mask,
-                                                     clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask)
-            
+                                                     entity_mask,
+                                                     clicked_event, candidate_event,
+                                                     clicked_topic_ids, clicked_topic_ids_mask,
+                                                     clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask,
+                                                     )
+            # clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask,
+
             tasks.append((labels.tolist(), scores))
 
     with mp.Pool(processes=cfg.num_workers) as pool:
@@ -194,8 +255,8 @@ def test(model, local_rank, cfg):
     tasks = []
     with torch.no_grad():
         for cnt, (
-        subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_abs_entity,
-        abs_candidate_entity, abs_entity_mask, clicked_subcategory, subcategories, clicked_event, candidate_event,
+        subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels,
+        clicked_event, candidate_event,
         clicked_event_mask, clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.test_len / cfg.gpu_num),
@@ -205,8 +266,8 @@ def test(model, local_rank, cfg):
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
             entity_mask = entity_mask.to(local_rank, non_blocking=True)
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
-            clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
-            clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
+            # clicked_abs_entity = clicked_abs_entity.to(local_rank, non_blocking=True)
+            # clicked_subcategory = clicked_subcategory.to(local_rank, non_blocking=True)
 
             clicked_event = clicked_event.to(local_rank, non_blocking=True)
             candidate_event = candidate_event.to(local_rank, non_blocking=True)
@@ -217,17 +278,16 @@ def test(model, local_rank, cfg):
             if len(candidate_key_entity) != 0:
                 candidate_key_entity = candidate_key_entity.to(local_rank, non_blocking=True)
                 candidate_key_entity_mask = candidate_key_entity_mask.to(local_rank, non_blocking=True)
-            if len(abs_candidate_entity) != 0:
-                abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
-                abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
-            if len(subcategories) != 0:
-                subcategories = subcategories.to(local_rank, non_blocking=True)
+            # if len(abs_candidate_entity) != 0:
+            #     abs_candidate_entity = abs_candidate_entity.to(local_rank, non_blocking=True)
+            #     abs_entity_mask = abs_entity_mask.to(local_rank, non_blocking=True)
+            # if len(subcategories) != 0:
+            #     subcategories = subcategories.to(local_rank, non_blocking=True)
 
             # print(f"in main.py, clicked_event.shape = {clicked_event}")
             scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb,
-                                                     candidate_entity, entity_mask, clicked_abs_entity,
-                                                     abs_candidate_entity, abs_entity_mask, clicked_subcategory,
-                                                     subcategories, clicked_event, candidate_event, clicked_event_mask,
+                                                     candidate_entity, entity_mask,
+                                                     clicked_event, candidate_event, clicked_event_mask,
                                                      clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask)
 
             tasks.append((labels.tolist(), scores))
@@ -291,8 +351,8 @@ def main_worker(local_rank, cfg):
         model.load_state_dict(checkpoint['model_state_dict'])  # After Distributed
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     optimizer.zero_grad(set_to_none=True)
     scaler = amp.GradScaler()
 

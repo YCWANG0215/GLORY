@@ -77,9 +77,11 @@ class NewsEncoder(nn.Module):
         # [batch_size * news_num, view_size, word_emb_dim]
         # print(f"news_input.shape: {news_input.shape}")
         title_input, _, _, _, _, _ = news_input.split([self.view_size[0], 5, 1, 1, 1, 5], dim=-1)
-
+        # print(title_input.shape # [1, 15828, 30]
         title_word_emb = self.word_encoder(title_input.long().view(-1, self.view_size[0]))
+        # print("news_encoder: ")
         # print(f"title_word_emb.shape: {title_word_emb.shape}") # [15828, 30, 300]
+        # print(f"mask.shape: {mask.shape}")
         total_word_emb = title_word_emb
 
         result = self.attention(total_word_emb, mask)

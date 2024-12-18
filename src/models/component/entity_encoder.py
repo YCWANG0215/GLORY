@@ -3,6 +3,9 @@ import torch.nn as nn
 from models.base.layers import *
 from torch_geometric.nn import Sequential
 
+from src.models.base.layers import MultiHeadAttention, AttentionPooling
+
+
 class EntityEncoder(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -64,7 +67,8 @@ class GlobalEntityEncoder(nn.Module):
         # print(f"batch_size: {batch_size}, num_news: {num_news}, num_entity: {num_entity}")
         if entity_mask is not None:
             entity_mask = entity_mask.view(batch_size*num_news, num_entity)
-
+        # print(f"entity_input.shape: {entity_input.shape}")
+        # print(f"entity_mask.shape: {entity_mask.shape}")
         result = self.atte(entity_input.view(batch_size*num_news, num_entity, self.entity_dim), entity_mask).view(batch_size, num_news, self.news_dim)
-
+        # print(f"result.shape: {result.shape}")
         return result

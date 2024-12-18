@@ -18,6 +18,9 @@ import torch
 import json
 import itertools
 
+from utils.user_statistic_util import user_statistic
+
+
 # from models.oneie.predict import *
 
 def pad_to_fix_len(x, fix_length, padding_front=True, padding_value=0):
@@ -142,6 +145,8 @@ def read_raw_news(cfg, file_path, mode='train'):
     # nltk.download('punkt')
     
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+    node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
+    node_index = json.load(open(Path(data_dir["train"]) / "node_index.json", "rb"))
 
     # TODO 数据预处理
     if mode in ['val', 'test']:
@@ -157,9 +162,11 @@ def read_raw_news(cfg, file_path, mode='train'):
         # print(f"len(event_type_dict): {len(event_type_dict)}")
         # key_entity_dict = pickle.load(open(Path(data_dir["train"]) / "key_entity_dict.bin", "rb"))
         key_entities = pickle.load(open(Path(data_dir["train"]) / "key_entities.bin", "rb"))
-
+        news_subtopic_map = pickle.load(open(Path(data_dir["train"]) / "news_subtopic_map.bin", "rb"))
+        news_topic_map = pickle.load(open(Path(data_dir["train"]) / "news_topic_map.bin", "rb"))
+        user_history_map = pickle.load(open(Path(data_dir["train"]) / "user_history_map.bin", "rb"))
         # key_entities_mask = pickle.load(open(Path(data_dir["train"]) / "key_entities_mask.bin", "rb"))
-
+        # hetero_graph_map = pickle.load(open(Path(data_dir["train"]) / "hetero_graph_map.bin", "rb"))
         # role_dict = pickle.load(open(Path(data_dir["train"]) / "role_dict.bin", "rb"))
     else:
         news = {}
@@ -175,6 +182,10 @@ def read_raw_news(cfg, file_path, mode='train'):
         key_entities = {}
         key_entities_mask = {}
         # role_dict = {}
+        news_subtopic_map = {}
+        news_topic_map = {}
+        user_history_map = {}
+        # hetero_graph_map = {}
 
     # category_dict = {}
     # subcategory_dict = {}
@@ -182,6 +193,13 @@ def read_raw_news(cfg, file_path, mode='train'):
     # abs_word_cnt = Counter()
 
     num_line = len(open(file_path, encoding='utf-8').readlines())
+    # behavior_num_line = len(open(file_path, encoding='utf-8').readlines())
+    #
+    # behavior_file_path = os.path.join(data_dir[mode], 'behaviors.tsv')
+    # with open(behavior_file_path, 'r', encoding='utf-8') as f:
+    #     for line in tqdm(f, total=behavior_num_line, desc=f"[{mode}]Processing user behavior"):
+    #         line = line.strip().split('\t')
+    #         click_id = line[3].split()[-self.cfg.model.his_size:]
 
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in tqdm(f, total=num_line, desc=f"[{mode}]Processing raw news"):
@@ -191,8 +209,13 @@ def read_raw_news(cfg, file_path, mode='train'):
             # print(f"t_entity_str = {t_entity_str}")
             update_dict(target_dict=news_dict, key=news_id)
             update_dict(target_dict=event_dict, key=news_id)
+
+
+            # news_topic_map[news_id] = category
+            # news_subtopic_map[news_id] = subcategory
+
             provided_entity = []
-            provided_entity_abs = []
+            # provided_entity_abs = []
             # Entity
             if t_entity_str:
                 entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
@@ -205,28 +228,28 @@ def read_raw_news(cfg, file_path, mode='train'):
 
 
             # Abstract Entity
-            if abs_entity_str:
-                abs_entity_ids = [obj["WikidataId"] for obj in json.loads(abs_entity_str)]
-                [update_dict(target_dict=abs_entity_dict, key=abs_entity_id) for abs_entity_id in abs_entity_ids]
-                provided_entity_abs = [obj["SurfaceForms"][0] for obj in json.loads(abs_entity_str) if obj["SurfaceForms"]]
-            else:
-                abs_entity_ids = abs_entity_str
+            # if abs_entity_str:
+            #     abs_entity_ids = [obj["WikidataId"] for obj in json.loads(abs_entity_str)]
+            #     [update_dict(target_dict=abs_entity_dict, key=abs_entity_id) for abs_entity_id in abs_entity_ids]
+            #     provided_entity_abs = [obj["SurfaceForms"][0] for obj in json.loads(abs_entity_str) if obj["SurfaceForms"]]
+            # else:
+            #     abs_entity_ids = abs_entity_str
 
 
 
-            provided_entity += provided_entity_abs
+            # provided_entity += provided_entity_abs
 
             # TODO 事件抽取
             # news_entry: 标题+摘要
-            news_entry = f"{title}"
-            news_entry_dir = os.path.join(data_dir[f"{mode}"], "NewsTxt")
+            # news_entry = f"{title}"
+            # news_entry_dir = os.path.join(data_dir[f"{mode}"], "NewsTxt")
             event_json_dir = os.path.join(data_dir[f"{mode}"], "EventJson")
-            os.makedirs(news_entry_dir, exist_ok=True)
-            os.makedirs(event_json_dir, exist_ok=True)
-            news_entry_file_path = os.path.join(news_entry_dir, f"{news_id}.txt")
+            # os.makedirs(news_entry_dir, exist_ok=True)
+            # os.makedirs(event_json_dir, exist_ok=True)
+            # news_entry_file_path = os.path.join(news_entry_dir, f"{news_id}.txt")
 
-            with open(news_entry_file_path, 'w') as news_entry_file:
-                news_entry_file.write(news_entry + '\n')
+            # with open(news_entry_file_path, 'w') as news_entry_file:
+            #     news_entry_file.write(news_entry + '\n')
 
             # TODO 读出事件抽取结果中的每个entities对应的token、triggers、relations以及roles
             event_json_path = os.path.join(event_json_dir, f"{news_id}.txt.json")
@@ -250,14 +273,24 @@ def read_raw_news(cfg, file_path, mode='train'):
 
                 triggers_origin = event_json["graph"]["triggers"]
                 triggers = []
-                event_types = []
-                event_type_confidence = []
+                # # event_types = []
+                # # event_type_confidence = []
+                # for trigger in triggers_origin:
+                #     start, end, _event_type, confidence = trigger
+                #     trigger_text = " ".join(event_json["tokens"][start:end])
+                #     triggers.append(trigger_text)
+                #     # event_types.append(_event_type)
+                #     # event_type_confidence.append(confidence)
+                # event_type = f"{category}.{subcategory}"
+                # event_types = []
+                # event_type_confidence = []
                 for trigger in triggers_origin:
                     start, end, _event_type, confidence = trigger
                     trigger_text = " ".join(event_json["tokens"][start:end])
                     triggers.append(trigger_text)
-                    event_types.append(_event_type)
-                    event_type_confidence.append(confidence)
+                    # event_types.append(f"{category}.{subcategory}")
+                    # event_types.append(_event_type)
+                    # event_type_confidence.append(confidence)
 
                 # NO
                 # roles_origin = event_json["graph"]["roles"]
@@ -269,14 +302,26 @@ def read_raw_news(cfg, file_path, mode='train'):
                 #     update_dict(target_dict=role_dict, key=role_type)
 
             # TODO 根据置信度确定最终事件类型
-            if len(event_types) != 0:
-                max_confidence = max(event_type_confidence)
-                max_confidence_indices = [i for i, confidence in enumerate(event_type_confidence) if confidence == max_confidence]
-                event_type = event_types[max_confidence_indices[0]]
-            else:
-                event_type = f"Regular.{category}"
+            # if len(event_types) != 0:
+            #     max_confidence = max(event_type_confidence)
+            #     max_confidence_indices = [i for i, confidence in enumerate(event_type_confidence) if confidence == max_confidence]
+            #     event_type = event_types[max_confidence_indices[0]]
+            # else:
+            #     event_type = f"Regular.{category}"
+            #     event_type = f"{category}.{subcategory}"
             # print(f"event_type: {event_type}")
+            # TODO 根据置信度确定最终事件类型
+            # if len(event_types) != 0:
+                # max_confidence = max(event_type_confidence)
+                # max_confidence_indices = [i for i, confidence in enumerate(event_type_confidence) if
+                #                           confidence == max_confidence]
+                # event_type = event_types[max_confidence_indices[0]]
+            # else:
+            #     event_type = f"Regular.{category}"
+            # print(f"event_type: {event_type}")
+            event_type = f"{category}.{subcategory}"
             update_dict(target_dict=event_type_dict, key=event_type)
+            # update_dict(target_dict=event_type_dict, key=event_types)
 
 
 
@@ -288,7 +333,7 @@ def read_raw_news(cfg, file_path, mode='train'):
 
             # TODO one line
             # key_entity_list = []
-            key_entity_list = list(set(provided_entity) & set(event_entities))
+            # key_entity_list = list(set(provided_entity) & set(event_entities))
 
             # key_entity = ' '.join(key_entity_list)
             # print(f"key_entity = {key_entity}")
@@ -301,15 +346,15 @@ def read_raw_news(cfg, file_path, mode='train'):
             # print(f"type(key_entity) = {type(key_entity_list)}")
 
             # TODO
-            key_entity_ids = []
-            for key_entity in key_entity_list:
-                for obj in json.loads(t_entity_str):
-                    # print(f"key_entity = {key_entity} , obj[SurfaceForms] = {sur}, id = {id}")
-                    if len(obj["SurfaceForms"]) > 0:
-                        sur = obj["SurfaceForms"][0]
-                    if key_entity == sur:
-                        id = obj["WikidataId"]
-                        key_entity_ids.append(id)
+            # key_entity_ids = []
+            # for key_entity in key_entity_list:
+            #     for obj in json.loads(t_entity_str):
+            #         # print(f"key_entity = {key_entity} , obj[SurfaceForms] = {sur}, id = {id}")
+            #         if len(obj["SurfaceForms"]) > 0:
+            #             sur = obj["SurfaceForms"][0]
+            #         if key_entity == sur:
+            #             id = obj["WikidataId"]
+            #             key_entity_ids.append(id)
 
             # key_entity_ids = list(itertools.chain.from_iterable(key_entity_ids))
             # print(f"key_entity: {key_entity}")
@@ -317,20 +362,20 @@ def read_raw_news(cfg, file_path, mode='train'):
 
             # TODO 已经拿到这条news_id对应的key_entity的wikidataID（Q开头的），接下来从entity_dict中取出这些wikidataID对应的entity序号
 
-            actual_key_entity_ids = []
+            # actual_key_entity_ids = []
             # print(f"key_entity_size: {cfg.model.key_entity_size}")
-            for key_entity_id in key_entity_ids:
-                actual_key_entity_ids.append(entity_dict[key_entity_id])
+            # for key_entity_id in key_entity_ids:
+            #     actual_key_entity_ids.append(entity_dict[key_entity_id])
 
             # print(f"key_entity_ids: {actual_key_entity_ids}, len: {len(actual_key_entity_ids)}")
-            if len(actual_key_entity_ids) >= cfg.model.key_entity_size:
-                actual_key_entity_ids = actual_key_entity_ids[-cfg.model.key_entity_size:]
-            else:
-                actual_key_entity_ids, actual_key_entity_mask = pad_to_fix_len(actual_key_entity_ids, cfg.model.key_entity_size)
+            # if len(actual_key_entity_ids) >= cfg.model.key_entity_size:
+            #     actual_key_entity_ids = actual_key_entity_ids[-cfg.model.key_entity_size:]
+            # else:
+            #     actual_key_entity_ids, actual_key_entity_mask = pad_to_fix_len(actual_key_entity_ids, cfg.model.key_entity_size)
             # print(len(actual_key_entity_ids))
             # print(f"after changed actual_key_entity_ids: {actual_key_entity_ids}")
             # update_dict(target_dict=key_entity_dict, key=news_id)
-            update_dict(target_dict=key_entities, key=news_id, value=[actual_key_entity_ids, actual_key_entity_mask])
+            # update_dict(target_dict=key_entities, key=news_id, value=[actual_key_entity_ids, actual_key_entity_mask])
             # news_idx = news_dict[news_id]
             # update_dict(target_dict=key_entities_mask, key=news_idx, value=actual_key_entity_mask)
 
@@ -348,6 +393,7 @@ def read_raw_news(cfg, file_path, mode='train'):
 
 
             tokens = word_tokenize(title.lower(), language=cfg.dataset.dataset_lang)
+
             # abs_tokens = word_tokenize(abstract.lower(), language=cfg.dataset.dataset_lang)
 
             # TODO key_entity要不要Glove编码
@@ -360,19 +406,21 @@ def read_raw_news(cfg, file_path, mode='train'):
             #     "subcategory": subcategory,
             #     "triggers": triggers
             # }
+
             # print(f"event: {event}")
             update_dict(target_dict=news, key=news_id, value=[tokens, category, subcategory, entity_ids,
                                                                 news_dict[news_id], abs_entity_ids])
-
-
-
-
-            update_dict(target_dict=category_dict, key=category)
-            update_dict(target_dict=subcategory_dict, key=subcategory)
+            update_dict(target_dict=category_dict, key=category, value=node_dict["topic"][category])
+            # print(f"category: {category}, category_dict_value: {category_dict[category]}, node_dict: {node_dict['topic'][category]}")
+            update_dict(target_dict=subcategory_dict, key=subcategory, value=node_dict["subtopic"][subcategory])
+            # print(f"subcategory: {subcategory}, subcategory_dict_value: {subcategory_dict[subcategory]}, node_dict: {node_dict['subtopic'][subcategory]}")
             # TODO one line
             update_dict(target_dict=events, key=news_id, value=[event_type, event_type_dict[event_type], event_entities, category, subcategory, triggers])
+            # print(f"events: f{events[news_id]}")
             # update_dict(target_dict=events, key=news_id, value=event)
-
+            update_dict(target_dict=news_subtopic_map, key=news_id, value=subcategory_dict[subcategory])
+            update_dict(target_dict=news_topic_map, key=news_id, value=category_dict[category])
+            # update_dict(target_dict=hetero_graph_map, key=news_id, value=[category, subcategory, triggers])
             if mode == 'train':
                 word_cnt.update(tokens)
                 # update_dict(target_dict=category_dict, key=category)
@@ -394,16 +442,58 @@ def read_raw_news(cfg, file_path, mode='train'):
         #         title_abs_file.write(entry + '\n')
         #     print(f"[{mode}] news_title_abstract.txt finish.")
 
-        # TODO 调用read_raw_news接受返回值变更
+        user_history_map = read_user_info(cfg, mode, news, news_dict, category_dict, subcategory_dict, user_history_map)
+
         if mode == 'train':
             word = [k for k, v in word_cnt.items() if v > cfg.model.word_filter_num]
             word_dict = {k: v for k, v in zip(word, range(1, len(word) + 1))}
             # return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map
         else:  # val, test
             # TODO 非训练集要不要返回category_dict、subcategory_dict
             # return news, news_dict, None, None, entity_dict, None
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entities
+
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map
+
+
+def read_user_info(cfg, mode, news, news_dict, category_dict, subcategory_dict, user_history_map):
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+
+    behavior_file_path = os.path.join(data_dir[mode], 'behaviors.tsv')
+    behavior_num_line = len(open(behavior_file_path, encoding='utf-8').readlines())
+
+    with open(behavior_file_path, 'r', encoding='utf-8') as f:
+        for line in tqdm(f, total=behavior_num_line, desc=f"[{mode}]Processing user behavior"):
+            line = line.strip().split('\t')
+            user_id = line[1]
+            if user_id in user_history_map:
+                continue
+            click_ids = line[3].split()[-cfg.model.his_size:]
+            # print(f"click_ids: {click_ids}")
+            topic_group = {}
+            subtopic_group = {}
+
+            for clicked_news in click_ids:
+                news_info = news[clicked_news]
+                # print(f"user {user_id}'s news_info: {news_info}")
+                topic_id = category_dict[news_info[1]]
+                subtopic_id = subcategory_dict[news_info[2]]
+
+                if topic_id not in topic_group:
+                    topic_group[topic_id] = []
+                topic_group[topic_id].append(clicked_news)
+
+                if subtopic_id not in subtopic_group:
+                    subtopic_group[subtopic_id] = []
+                subtopic_group[subtopic_id].append(clicked_news)
+
+            update_dict(target_dict=user_history_map, key=user_id, value=[topic_group, subtopic_group])
+
+    # TODO 用户信息统计
+    # user_statistic(cfg, mode, user_history_map)
+
+    return user_history_map
+
 
 
 def read_parsed_news(cfg, news, news_dict,
@@ -426,6 +516,7 @@ def read_parsed_news(cfg, news, news_dict,
         news_index[_news_index, 0] = news_dict[_news_id]
 
 
+
         # entity
         entity_index = [entity_dict[entity_id] if entity_id in entity_dict else 0 for entity_id in _entity_ids]
         news_entity[_news_index, :min(cfg.model.entity_size, len(_entity_ids))] = entity_index[:cfg.model.entity_size]
@@ -444,7 +535,7 @@ def read_parsed_news(cfg, news, news_dict,
     return news_title, news_entity, news_category, news_subcategory, news_index, news_abs_entity
 
 
-def read_news_events(cfg, news, news_dict, event_type_dict=None, events=None, word_dict=None, category_dict=None, subcategory_dict=None, event_dict=None):
+def read_news_events(cfg, news, news_dict, event_type_dict=None, events=None, word_dict=None, category_dict=None, subcategory_dict=None, event_dict=None, node_dict=None):
     # TODO 1位事件类型索引、5位事件实体、3位triggers、1位category、1位subcategory、1位news_index
     news_num = len(news) + 1
     category, subcategory, news_index = [np.zeros((news_num, 1), dtype='int32') for _ in range(3)]
@@ -468,19 +559,113 @@ def read_news_events(cfg, news, news_dict, event_type_dict=None, events=None, wo
         for _entity_id in range(min(len(event_info[2]), 5)):
             if event_info[2][_entity_id] in word_dict:
                 event_entity[_news_index, _entity_id] = word_dict[event_info[2][_entity_id]]
+
         for trigger_id in range(min(len(event_info[-1]), 3)):
             if event_info[-1][trigger_id] in word_dict:
                 triggers[_news_index, trigger_id] = word_dict[event_info[-1][trigger_id]]
+
+
+
     # return event_type, event_entity, event_role, category, subcategory, news_index
     # return event_type, event_entity, triggers, category, subcategory, news_index
+    # print(f"triggers: {triggers}")
     return event_type, event_entity, triggers, category, subcategory
+
+
+def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+    news_num = len(news_dict) + 1
+    # print(f"news_num = {news_num}")
+    topic, subtopic = [np.zeros((news_num, 1), dtype='int32') for _ in range(2)]
+    triggers = np.zeros((news_num, 3), dtype='int32')
+    arguments = np.zeros((news_num, 5), dtype='int32')
+    with open(Path(data_dir[mode]) / "hetero_graph_basic.json", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        for line in lines:
+            # hetero_graph_info = json.load(open(Path(data_dir[mode]) / "hetero_graph_basic.json"))
+            # news_num = len(hetero_graph_info) + 1
+
+            data = json.loads(line.strip())
+            _news_id = data['news_id']
+            _topic = data['topic']
+            _subtopic = data['subtopic']
+            _trigger = data['trigger']
+            _argument = data['argument']
+            # print(f"news_id: {_news_id}")
+            # print(f"topic: {_topic}")
+            # print(f"_trigger: {_trigger}")
+            # print(f"_argument: {_argument}")
+
+            topic[news_dict[_news_id], 0] = node_dict["topic"][_topic]
+            # print(f"topic: {_topic}, id: {topic[news_dict[_news_id], 0]}")
+            subtopic[news_dict[_news_id], 0] = node_dict["subtopic"][_subtopic]
+            # print(f"subtopic: {_subtopic}, id: {subtopic[news_dict[_news_id], 0]}")
+            if _trigger == '[]':
+                for i in range(3):
+                    triggers[news_dict[_news_id], i] = 0
+            else:
+                _trigger = _trigger[1:-1].split(",")
+                # print(f"_trigger: {_trigger}")
+                trigger_ids = []
+                for tri in _trigger:
+                    tri = tri.strip()[1:-1].strip("'").lower()
+                    # print(f"tri: {tri}")
+                    trigger_ids.append(node_dict["trigger"][tri])
+                # print(f"trigger_ids: {trigger_ids}")
+                if len(trigger_ids) < 3:
+                    for i in range(3 - len(trigger_ids)):
+                        trigger_ids.append(0)
+                # print(f"_trigger: {_trigger}")
+                # print(f"trigger_ids: {trigger_ids}")
+                # trigger_index = [node_dict["trigger"][trigger] if trigger in node_dict["trigger"] else 0 for trigger in _trigger]
+                # print(f"trigger_index: {trigger_index}")
+                # print(f"trigger_ids[:3]: {trigger_ids[:3]}")
+                triggers[news_dict[_news_id], :min(3, len(trigger_ids))] = trigger_ids[:3]
+                # print(f"news_dict[{_news_id}]: {news_dict[_news_id]}, triggers: {triggers[news_dict[_news_id], :min(3, len(trigger_ids))]}")
+                # print(f"_triggers_: {triggers}")
+            # print()
+            # print(f"triggers: {triggers}")
+            # print(f"trigger_index: {trigger_index}")
+            if _argument == '[]':
+                for i in range(5):
+                    arguments[news_dict[_news_id], i] = 0
+            else:
+                _argument = _argument[1:-1].split(",")
+                argument_ids = []
+                for arg in _argument:
+                    arg = arg.strip()[1:-1].strip("'").lower()
+                    # print(f"arg: {arg}")
+                    argument_ids.append(node_dict["argument"][arg])
+                # print(f"argument_ids: {argument_ids}")
+                if len(argument_ids) < 5:
+                    for i in range(5 - len(argument_ids)):
+                        argument_ids.append(0)
+                # print(f"argument_ids: {argument_ids}")
+                # argument_index = [node_dict["argument"][argument] if argument in node_dict["argument"] else 0 for argument in _argument]
+                # print(f"argument_index: {argument_index}")
+                arguments[news_dict[_news_id], :min(5, len(argument_ids))] = argument_ids[:5]
+
+        # for i in range(len(triggers)):
+        #     print(f"news{i} triggers: {triggers[i, :3]}")
+
+        # for i in range(len(arguments)):
+        #     print(f"news{i} arguments: {arguments[i, :5]}")
+        # print(f"triggers: {triggers}")
+        # print(f"arguments: {arguments}")
+
+    return topic, subtopic, triggers, arguments
+
+
+
+
+
 
 def prepare_preprocess_bin(cfg, mode):
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
 
     if cfg.reprocess is True:
         # Glove
-        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities= read_raw_news(
+        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map = read_raw_news(
             file_path=Path(data_dir[mode]) / "news.tsv",
             cfg=cfg,
             mode=mode,
@@ -507,25 +692,39 @@ def prepare_preprocess_bin(cfg, mode):
         pickle.dump(events, open(Path(data_dir[mode]) / "events.bin", "wb"))
         # pickle.dump(key_entity_dict, open(Path(data_dir[mode])/ "key_entity_dict.bin", "wb"))
         pickle.dump(key_entities, open(Path(data_dir[mode]) / "key_entities.bin", "wb"))
+        pickle.dump(news_subtopic_map, open(Path(data_dir[mode]) / "news_subtopic_map.bin", "wb"))
+        pickle.dump(news_topic_map, open(Path(data_dir[mode]) / "news_topic_map.bin", "wb"))
+        pickle.dump(user_history_map, open(Path(data_dir[mode]) / "user_history_map.bin", "wb"))
         # pickle.dump(key_entities_mask, open(Path(data_dir[mode]) / "key_entities_mask.bin", "wb"))
         # pickle.dump(role_dict, open(Path(data_dir[mode]) / "role_dict.bin", "wb"))
-
+        node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
         # nltk_news_features: news_title, news_entity, news_category, news_subcategory, news_index
         nltk_news_features = read_parsed_news(cfg, nltk_news, nltk_news_dict,
                                               category_dict, subcategory_dict, entity_dict,
                                               word_dict, abs_entity_dict)
+        # print(f"nltk_news_features[4] = {nltk_news_features[4]}")
         # def read_news_events(cfg, news, news_dict, event_dict=None, events=None, word_dict=None, role_dict=None, category_dict=None, subcategory_dict=None,):
         # TODO one line
-        nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict, category_dict, subcategory_dict, event_dict)
+        nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict, category_dict, subcategory_dict, event_dict, node_dict)
+
+        # TODO nltk_user_features
+        # nltk_user_features = read_user_history()
         # news_input: 把输入的新闻特征信息连成一个大矩阵
         news_input = np.concatenate([x for x in nltk_news_features], axis=1)
+        # print(f"news_input.shape = {news_input.shape}") # [51283, 43]
         pickle.dump(news_input, open(Path(data_dir[mode]) / "nltk_token_news.bin", "wb"))
         # TODO two line
         event_input = np.concatenate([x for x in nltk_event_features], axis=1)
         pickle.dump(event_input, open(Path(data_dir[mode]) / "nltk_token_event.bin", "wb"))
+
+        hetero_graph_info = prepare_hetero_graph_info(cfg, node_dict, mode, nltk_news_dict)
+        hetero_graph_news_input = np.concatenate([x for x in hetero_graph_info], axis=1)
+        pickle.dump(hetero_graph_news_input,open(Path(data_dir[mode]) / "hetero_graph_news_input.bin", "wb") )
+
         print("Glove token preprocess finish.")
     else:
         print(f'[{mode}] All preprocessed files exist.')
+
 
 
 def prepare_news_graph(cfg, mode='train'):
@@ -1038,6 +1237,12 @@ def prepare_subcategory_graph(cfg, mode='train'):
         torch.save(data, target_path)
         print(f"[{mode}] Finish Subcategory Graph Construction, \n Graph Path: {target_path} \nGraph Info: {data}")
 
+
+# def prepare_user_info(cfg):
+#     print("Building user info...")
+
+
+
 def prepare_preprocessed_data(cfg):
     # Entity vec process
     data_dir = {"train":cfg.dataset.train_dir, "val":cfg.dataset.val_dir, "test":cfg.dataset.test_dir}
@@ -1056,14 +1261,15 @@ def prepare_preprocessed_data(cfg):
 
     prepare_distributed_data(cfg, "train")
     prepare_distributed_data(cfg, "val")
+    # prepare_distributed_data(cfg, "test")
 
     prepare_preprocess_bin(cfg, "train")
     prepare_preprocess_bin(cfg, "val")
-    prepare_preprocess_bin(cfg, "test")
+    # prepare_preprocess_bin(cfg, "test")
 
     prepare_news_graph(cfg, 'train')
     prepare_news_graph(cfg, 'val')
-    prepare_news_graph(cfg, 'test')
+    # prepare_news_graph(cfg, 'test')
 
     # prepare_event_graph(cfg, 'train')
     # prepare_event_graph(cfg, 'val')
@@ -1071,36 +1277,36 @@ def prepare_preprocessed_data(cfg):
 
     prepare_neighbor_list(cfg, 'train', 'news')
     prepare_neighbor_list(cfg, 'val', 'news')
-    prepare_neighbor_list(cfg, 'test', 'news')
+    # prepare_neighbor_list(cfg, 'test', 'news')
 
     prepare_entity_graph(cfg, 'train')
     prepare_entity_graph(cfg, 'val')
-    prepare_entity_graph(cfg, 'test')
+    # prepare_entity_graph(cfg, 'test')
 
     prepare_neighbor_list(cfg, 'train', 'entity')
     prepare_neighbor_list(cfg, 'val', 'entity')
-    prepare_neighbor_list(cfg, 'test', 'entity')
+    # prepare_neighbor_list(cfg, 'test', 'entity')
 
     # TODO 新增START
     # prepare_neighbor_list(cfg, 'train', 'event')
     # prepare_neighbor_list(cfg, 'val', 'event')
     # prepare_neighbor_list(cfg, 'test', 'event')
 
-    prepare_abs_entity_graph(cfg, 'train')
-    prepare_abs_entity_graph(cfg, 'val')
-    prepare_abs_entity_graph(cfg, 'test')
+    # prepare_abs_entity_graph(cfg, 'train')
+    # prepare_abs_entity_graph(cfg, 'val')
+    # prepare_abs_entity_graph(cfg, 'test')
 
-    prepare_neighbor_list(cfg, 'train', 'abs_entity')
-    prepare_neighbor_list(cfg, 'val', 'abs_entity')
-    prepare_neighbor_list(cfg, 'test', 'abs_entity')
+    # prepare_neighbor_list(cfg, 'train', 'abs_entity')
+    # prepare_neighbor_list(cfg, 'val', 'abs_entity')
+    # prepare_neighbor_list(cfg, 'test', 'abs_entity')
 
-    prepare_subcategory_graph(cfg, 'train')
-    prepare_subcategory_graph(cfg, 'val')
-    prepare_subcategory_graph(cfg, 'test')
+    # prepare_subcategory_graph(cfg, 'train')
+    # prepare_subcategory_graph(cfg, 'val')
+    # prepare_subcategory_graph(cfg, 'test')
 
-    prepare_neighbor_list(cfg, 'train', 'subcategory')
-    prepare_neighbor_list(cfg, 'val', 'subcategory')
-    prepare_neighbor_list(cfg, 'test', 'subcategory')
+    # prepare_neighbor_list(cfg, 'train', 'subcategory')
+    # prepare_neighbor_list(cfg, 'val', 'subcategory')
+    # prepare_neighbor_list(cfg, 'test', 'subcategory')
 
     # TODO 新增END
 
@@ -1120,3 +1326,4 @@ def prepare_preprocessed_data(cfg):
     # os.system("cat " + f"{train_entity_emb_path} {test_entity_emb_path}" + f" > {test_combined_path}")
 
     print("Finish prepare_preprocessed_data function.")
+
