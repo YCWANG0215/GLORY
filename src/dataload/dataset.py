@@ -230,10 +230,10 @@ class TrainGraphDataset(TrainDataset):
         clicked_event_mask = None
         candidate_event = None
 
-        clicked_key_entity = None
-        clicked_key_entity_mask = None
-        candidate_key_entity = None
-        candidate_key_entity_mask = None
+        # clicked_key_entity = None
+        # clicked_key_entity_mask = None
+        # candidate_key_entity = None
+        # candidate_key_entity_mask = None
         # ------------------- Key Entity ----------------
         # if self.cfg.model.use_key_entity and clicked_key_entity is not None:
         # key_entity_input: {新闻id: 实体序号}
@@ -243,8 +243,8 @@ class TrainGraphDataset(TrainDataset):
         # cfg.his_size条新闻，每个新闻1个key_entity_mask，每个key_entity_mask cfg.key_entity_size维
         # clicked_news_num = len(click_id)
         # original_len = len(original_click_idx)
-        clicked_key_entity = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size, 100))
-        clicked_key_entity_mask = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size))
+        # clicked_key_entity = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size, 100))
+        # clicked_key_entity_mask = np.zeros(shape=(self.cfg.model.his_size, self.cfg.model.key_entity_size))
         # clicked_news_mask = np.zeros(shape=self.cfg.model.his_size)
         # print(f"len(key_entity_input_mask) = {self.key_entity_input_mask}")
         # print(f"type(key_entity_input_mask = {type(self.key_entity_input_mask)})")
@@ -403,6 +403,8 @@ class TrainGraphDataset(TrainDataset):
         #                 clicked_key_entity.append(ke)
             # print(f"[train] clicked key_entity: {clicked_key_entity}")
 
+        if self.cfg.model.use_hetero_graph:
+            pass
 
 
         # ------------------ Candidate News ---------------------

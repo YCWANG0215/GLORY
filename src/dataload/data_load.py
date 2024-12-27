@@ -57,7 +57,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
     # print(f"news_input.shape = {news_input.shape}")
     # ------------- load behaviors_np{X}.tsv --------------
     if mode == 'train':
-        key_entity_input, key_entity_input_mask = load_key_entity_emb(cfg, mode, 100, key_entities, news_index)
+        # key_entity_input, key_entity_input_mask = load_key_entity_emb(cfg, mode, 100, key_entities, news_index)
         # print(f"[Data_load-load_data]: key_entity_input: {key_entity_input}")
         target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv"
         # target_file = Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv"

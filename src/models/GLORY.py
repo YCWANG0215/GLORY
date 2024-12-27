@@ -134,8 +134,8 @@ class GLORY(nn.Module):
         #         (EntityEncoder(cfg), 'x, mask -> x'),
         #     ])
         # print(f"category_size: {self.category_size}")
-        self.category_encoder = SubcategoryEncoder(self.category_size + 2)
-        self.subcategory_encoder = SubcategoryEncoder(self.subcategory_size + 2)
+        self.category_encoder = SubcategoryEncoder(self.category_size + 5)
+        self.subcategory_encoder = SubcategoryEncoder(self.subcategory_size + 5)
         # if self.use_subcategory:
         #     self.subcategory_attention = SubcategoryAttention(cfg, self.subcategory_size)
         #     self.global_subcategory_encoder = GlobalSubcategoryEncoder(cfg)
@@ -404,6 +404,7 @@ class GLORY(nn.Module):
         #--------------------Attention Pooling
         if self.use_entity:
             clicked_entity_emb = self.local_entity_encoder(clicked_entity.unsqueeze(0), None)
+            # print(f"clicked_entity_emb.shape: {clicked_entity_emb.shape}")
         else:
             clicked_entity_emb = None
 
@@ -420,7 +421,7 @@ class GLORY(nn.Module):
         if self.use_event:
             # num_news不一定有多少条
             # 数据格式：[1, num_news, 400]
-            # print(f"[validation] clicked_event.shape: {clicked_event.shape}")
+            # print(f"[val] clicked_event.shape: {clicked_event.shape}")
             # clicked_event_emb = self.event_encoder(clicked_event.unsqueeze(0), None)
             valid_clicked_event = clicked_event[-num_news:, :].view(batch_size, num_news, news_dim)
             # print(f"[val] [batch_size, num_news, news_dim]: [{batch_size, num_news, news_dim}]")
@@ -502,6 +503,7 @@ class GLORY(nn.Module):
                             clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
         clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb)
         # print(f"clicked_common_emb.shape: {clicked_common_emb.shape} ")
+        # print(f"[val] clicked_common_emb: {clicked_common_emb}")
         clicked_common_atte = self.atte(clicked_common_emb, None)
         # TODO clicked_final_emb + clicked_event_emb
         # clicked_final_emb = self.click_total_encoder(clicked_common_emb, clicked_event_emb)

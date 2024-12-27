@@ -61,6 +61,7 @@ model:
   subtopic_per_user: 15
   news_per_subtopic: 5
   word_emb_dim: 300
+  use_hetero_graph: true
 
 
 logger:

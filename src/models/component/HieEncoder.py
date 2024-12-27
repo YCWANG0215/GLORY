@@ -60,8 +60,8 @@ class HieEncoder(nn.Module):
             (AttentionPooling(self.news_dim,
                               cfg.model.attention_hidden_dim), 'x,mask -> x'),
             nn.LayerNorm(self.news_dim),
-            # nn.Linear(self.news_dim, self.news_dim),
-            # nn.LeakyReLU(0.2),
+            nn.Linear(self.news_dim, self.news_dim),
+            nn.LeakyReLU(0.2),
         ])
 
     def forward(self, clicked_topic_list, clicked_topic_mask_list,
@@ -92,9 +92,11 @@ class HieEncoder(nn.Module):
         # print(f"subtopic_news_emb.shape: {subtopic_news_emb.shape}") # [32, 400]
         # print(f"subtopic_entity_input.shape: {subtopic_entity_input.shape}") # [480, 5, 5]
         # print(f"subtopic_entity_input: {subtopic_entity_input}")
+
         subtopic_entity_emb = self.hie_entity_encoder(subtopic_entity_input)
         # print(f"subtopic_entity_emb.shape: {subtopic_entity_emb.shape}") # [32, 15, 400]
         subtopic_news_entity_emb = subtopic_news_emb + subtopic_entity_emb
+
         # print(f"subtopic_news_entity_emb.shape: {subtopic_news_entity_emb.shape}") # [32, 15, 400]
         # print(f"clicked_subtopic_list.shape: {clicked_subtopic_list.shape}") # [32, 15]
         subtopic_emb = self.subcategory_encoder(clicked_subtopic_list)

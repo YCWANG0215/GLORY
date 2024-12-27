@@ -214,15 +214,18 @@ def read_raw_news(cfg, file_path, mode='train'):
             # news_topic_map[news_id] = category
             # news_subtopic_map[news_id] = subcategory
 
-            provided_entity = []
+            # provided_entity = []
             # provided_entity_abs = []
             # Entity
             if t_entity_str:
                 entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
+                # print(f"{news_id}: {abs_entity_str}")
                 abs_entity_ids = [obj["WikidataId"] for obj in json.loads(abs_entity_str)]
-                entity_ids += abs_entity_ids
+                # print(f"news_id: {news_id}: abs_entity_ids: {abs_entity_ids}")
+                # print(f"abs_entity: {abs_entity_str}")
+                # entity_ids += abs_entity_ids
                 [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
-                provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
+                # provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
             else:
                 entity_ids = t_entity_str
 
@@ -408,6 +411,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # }
 
             # print(f"event: {event}")
+
             update_dict(target_dict=news, key=news_id, value=[tokens, category, subcategory, entity_ids,
                                                                 news_dict[news_id], abs_entity_ids])
             update_dict(target_dict=category_dict, key=category, value=node_dict["topic"][category])
@@ -579,6 +583,8 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
     topic, subtopic = [np.zeros((news_num, 1), dtype='int32') for _ in range(2)]
     triggers = np.zeros((news_num, 3), dtype='int32')
     arguments = np.zeros((news_num, 5), dtype='int32')
+    entities = np.zeros((news_num, 5), dtype='int32')
+
     with open(Path(data_dir[mode]) / "hetero_graph_basic.json", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         for line in lines:
@@ -591,6 +597,7 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
             _subtopic = data['subtopic']
             _trigger = data['trigger']
             _argument = data['argument']
+            _entity = data['entity']
             # print(f"news_id: {_news_id}")
             # print(f"topic: {_topic}")
             # print(f"_trigger: {_trigger}")
@@ -645,6 +652,21 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
                 # print(f"argument_index: {argument_index}")
                 arguments[news_dict[_news_id], :min(5, len(argument_ids))] = argument_ids[:5]
 
+            if _entity == '[]':
+                for i in range(5):
+                    entities[news_dict[_news_id], i] = 0
+            else:
+                _entity = _entity[1:-1].split(",")
+                entity_ids = []
+                for entity in _entity:
+                    entity = entity.strip()[1:-1].strip("'")
+                    entity_ids.append(node_dict["entity"][entity])
+                if len(entity_ids) < 5:
+                    for i in range(5 - len(entity_ids)):
+                        entity_ids.append(0)
+                entities[news_dict[_news_id], :min(5, len(entity_ids))] = entity_ids[:5]
+        # print(f"entities: {entities}")
+
         # for i in range(len(triggers)):
         #     print(f"news{i} triggers: {triggers[i, :3]}")
 
@@ -653,7 +675,7 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
         # print(f"triggers: {triggers}")
         # print(f"arguments: {arguments}")
 
-    return topic, subtopic, triggers, arguments
+    return topic, subtopic, triggers, arguments, entities
 
 
 
@@ -719,7 +741,7 @@ def prepare_preprocess_bin(cfg, mode):
 
         hetero_graph_info = prepare_hetero_graph_info(cfg, node_dict, mode, nltk_news_dict)
         hetero_graph_news_input = np.concatenate([x for x in hetero_graph_info], axis=1)
-        pickle.dump(hetero_graph_news_input,open(Path(data_dir[mode]) / "hetero_graph_news_input.bin", "wb") )
+        pickle.dump(hetero_graph_news_input, open(Path(data_dir[mode]) / "hetero_graph_news_input.bin", "wb") )
 
         print("Glove token preprocess finish.")
     else:

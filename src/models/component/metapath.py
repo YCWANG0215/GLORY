@@ -70,12 +70,17 @@ def extract_top_k_meta_paths_with_dynamic_edges(graph, start_node, meta_paths, t
 
 # 示例调用
 meta_paths = [
-    ['argument', 'topic', 'argument'],
-    ['argument', 'subtopic', 'argument'],
-    ['argument', 'trigger', 'argument'],
-    ['argument', 'argument', 'argument'],
-    ['argument', 'argument']
+    ['argument', 'topic', 'entity'],
+    ['argument', 'subtopic', 'entity'],
+    ['argument', 'trigger', 'entity'],
+    ['argument', 'argument', 'entity'],
+    ['entity', 'entity', 'entity'],
+    ['entity', 'topic', 'entity'],
+    ['entity', 'subtopic', 'entity'],
+    ['argument', 'entity'],
+    ['entity', 'entity']
 ]
+
 
 start_node = 2  # 起始 argument 节点索引
 top_k = 5  # 每种元路径提取的最大路径数量
