@@ -34,7 +34,7 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
     # torch.autograd.set_detect_anomaly(True)
 
     # TODO Add event extraction model
-    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask, clicked_event_mask) \
+    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask, clicked_event_mask,  indirect_entity_neighbors, indirect_entity_neighbors_mask) \
             in enumerate(tqdm(dataloader,
                               total=int(cfg.num_epochs * (cfg.dataset.pos_count // cfg.batch_size + 1)),
                               desc=f"[{local_rank}] Training"), start=1):
@@ -53,7 +53,7 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
         # print(f"candidate_entity_mask.shape: {entity_mask.shape}")
         clicked_event = clicked_event.to(local_rank, non_blocking=True)
         candidate_event = candidate_event.to(local_rank, non_blocking=True)
-        # clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
+        clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
         # if len(clicked_key_entity) != 0:
         # clicked_key_entity = clicked_key_entity.to(local_rank, non_blocking=True)
         # print(f"clicked_key_entity: {clicked_key_entity}")
@@ -83,12 +83,17 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
         # print(f"[train] clicked_subtopic_news_ids.shape: f{clicked_subtopic_news_ids.shape}")
 
         clicked_subtopic_news_ids_mask = clicked_subtopic_news_ids_mask.to(local_rank, non_blocking=True)
+
+        # candidate_second_order_entity_neighbor = candidate_second_order_entity_neighbor.to(local_rank, non_blocking=True)
+        # second_order_entity_mask = second_order_entity_mask.to(local_rank, non_blocking=True)
+        indirect_entity_neighbors = indirect_entity_neighbors.to(local_rank, non_blocking=True)
+        indirect_entity_neighbors_mask = indirect_entity_neighbors_mask.to(local_rank, non_blocking=True)
         # user_id = user_id.to(local_rank, non_blocking=True)
         # news_input = news_input.to(local_rank, non_blocking=True)
         # hetero_graph = hetero_graph.to(local_rank, non_blocking=True)
 
         with amp.autocast():
-            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask)
+            bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask, clicked_event_mask, indirect_entity_neighbors, indirect_entity_neighbors_mask)
             
         # Accumulate the gradients
         scaler.scale(bz_loss).backward()
@@ -134,13 +139,12 @@ def train(model, optimizer, scaler, scheduler, dataloader, local_rank, cfg, earl
                                          "best_ndcg5":res['ndcg5'], "best_ndcg10":res['ndcg10']})
 
 
-
 def val(model, local_rank, cfg):
     model.eval()
     dataloader = load_data(cfg, mode='val', model=model, local_rank=local_rank)
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask, clicked_event_mask) \
+        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event, clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask, clicked_event_mask, indirect_entity_neighbors, indirect_entity_neighbors_mask) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num ),
                                   # total=int(cfg.dataset.val_len / 1 ),
@@ -169,6 +173,7 @@ def val(model, local_rank, cfg):
 
 
             clicked_event = clicked_event.to(local_rank, non_blocking=True)
+            clicked_event_mask = clicked_event_mask.to(local_rank, non_blocking=True)
             candidate_event = candidate_event.to(local_rank, non_blocking=True)
 
             # hie_emb = model.module.hieRec_encoder(clicked_topic_ids, clicked_topic_ids_mask, clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_ids, clicked_subtopic_news_ids_mask)
@@ -205,6 +210,10 @@ def val(model, local_rank, cfg):
             # print(f"np_arr.shape: {np_arr.shape}")
             clicked_subtopic_news_list = clicked_subtopic_news_list.to(local_rank, non_blocking=True)
             clicked_subtopic_news_ids_mask = torch.tensor(clicked_subtopic_news_ids_mask).unsqueeze(0).to(local_rank, non_blocking=True)
+            # candidate_second_order_entity_neighbor = candidate_second_order_entity_neighbor.to(local_rank, non_blocking=True)
+            # second_order_entity_mask = second_order_entity_mask.to(local_rank, non_blocking=True)
+            indirect_entity_neighbors = indirect_entity_neighbors.to(local_rank, non_blocking=True)
+            indirect_entity_neighbors_mask = indirect_entity_neighbors_mask.to(local_rank, non_blocking=True)
             # print(f"clicked_subtopic_news_ids: {clicked_subtopic_news_ids}")
             # clicked_subtopic_news_lists = torch.tensor(np.array(clicked_subtopic_news_list)).to(local_rank, non_blocking=True)
             # hetero_graph = hetero_graph.to(local_rank, non_blocking=True)
@@ -216,7 +225,8 @@ def val(model, local_rank, cfg):
                                                      entity_mask,
                                                      clicked_event, candidate_event,
                                                      clicked_topic_ids, clicked_topic_ids_mask,
-                                                     clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask,
+                                                     clicked_subtopic_ids, clicked_subtopic_ids_mask, clicked_subtopic_news_list, clicked_subtopic_news_ids_mask, clicked_event_mask,
+                                                     indirect_entity_neighbors, indirect_entity_neighbors_mask
                                                      )
             # clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask,
 

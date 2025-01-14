@@ -93,6 +93,34 @@ class TrainDataset(IterableDataset):
             mask = [1] * min(fix_length, len(x)) + [0] * (fix_length - len(x))
         return pad_x, np.array(mask, dtype='float32')
 
+
+    # def update_entity_pool_dict(self, entity_pool_dict, entity_ids, entity_weights):
+    #     for entity, weight in zip(entity_ids, entity_weights):
+    #         if entity in entity_pool_dict:
+    #             entity_pool_dict[entity] += weight
+    #         else:
+    #             entity_pool_dict[entity] = weight
+    #
+    #     return entity_pool_dict
+    #
+    # def build_direct_entity_pool(self, public_adjacent_pool, public_adjacent_weights, strong_adjacent_pool, strong_adjacent_weights):
+    #     direct_entity_pool = {}
+    #     self.update_entity_pool_dict(direct_entity_pool, public_adjacent_pool, public_adjacent_weights)
+    #     self.update_entity_pool_dict(direct_entity_pool, strong_adjacent_pool, strong_adjacent_weights)
+    #
+    #     sorted_pool = sorted(direct_entity_pool.items(), key=lambda x: x[1], reverse=True)
+    #     return sorted_pool
+    #
+    #
+    # def build_indirect_entity_pool(self, public_adjacent_pool, public_adjacent_weights, indirect_entity_pool, indirect_entity_weights, indirect_non_entity_pool, indirect_non_entity_weights):
+    #     indirect_entity_pool_dict = {}
+    #     self.update_entity_pool_dict(indirect_entity_pool_dict, public_adjacent_pool, public_adjacent_weights)
+    #     self.update_entity_pool_dict(indirect_entity_pool_dict, indirect_entity_pool, indirect_entity_weights)
+    #     self.update_entity_pool_dict(indirect_entity_pool_dict, indirect_non_entity_pool, indirect_non_entity_weights)
+    #
+    #     sorted_pool = sorted(indirect_entity_pool.items(), key=lambda x: x[1], reverse=True)
+    #     return sorted_pool
+
     def line_mapper(self, line):
 
         line = line.strip().split('\t')
@@ -130,7 +158,7 @@ class TrainDataset(IterableDataset):
 
 
 class TrainGraphDataset(TrainDataset):
-    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, event_index, event_input,  topic_dict, subtopic_dict, news_topic_map, news_subtopic_map, user_history_map, node_dict, node_index, hetero_graph, hetero_graph_news_input):
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, event_index, event_input, topic_dict, subtopic_dict, news_topic_map, news_subtopic_map, user_history_map, node_dict, node_index, hetero_graph, hetero_graph_news_input, hetero_neighbors, hetero_neighbors_weights, hetero_graph_adjacent_pool, hetero_graph_adjacent_weights, direct_entity_pool, indirect_entity_pool):
         super().__init__(filename, news_index, news_input, local_rank, cfg, event_index, event_input)
         self.cfg = cfg
         self.news_index = news_index
@@ -162,7 +190,19 @@ class TrainGraphDataset(TrainDataset):
         self.node_index = node_index
         self.hetero_graph = hetero_graph
         self.hetero_graph_news_input = hetero_graph_news_input
+        self.hetero_neighbors = hetero_neighbors
+        self.hetero_neighbors_weights = hetero_neighbors_weights
+        self.hetero_graph_adjacent_pool = hetero_graph_adjacent_pool
+        self.hetero_graph_adjacent_weights = hetero_graph_adjacent_weights
+        self.direct_entity_pool = direct_entity_pool
+        self.indirect_entity_pool = indirect_entity_pool
 
+        # self.topic_num = len(self.hetero_neighbors['entity_topic'])
+        # self.subtopic_num = len(self.hetero_neighbors['entity_subtopic'])
+        # self.trigger_num = len(self.hetero_neighbors['entity_trigger'])
+        # self.argument_num = len(self.hetero_neighbors['entity_argument'])
+        # self.edge_types = ['entity_entity', 'entity_topic', 'entity_subtopic', 'entity_trigger', 'entity_argument', 'topic_entity', 'subtopic_entity', 'trigger_entity', 'argument_entity']
+        # self.entity_adjacent_dict = {}
         # self.user_stats = []
         # print(f"type(key_entity_input) = {type(key_entity_input)}") # np array
         # print(f"type(key_entity_input_mask) = {type(key_entity_input_mask)}") # dict
@@ -185,7 +225,8 @@ class TrainGraphDataset(TrainDataset):
         top_k = len(click_id)
         # 把新闻id转换为内部索引
         click_idx = self.trans_to_nindex(click_id)
-        original_click_idx = click_idx
+        # print(f"clicked_idx: {click_idx}")
+        # original_click_idx = click_idx
         # print("1")
         # clicked_topic = defaultdict(list)
         # clicked_subtopic = defaultdict(list)
@@ -195,7 +236,6 @@ class TrainGraphDataset(TrainDataset):
         #     cur_subtopic = self.news_subtopic_map[click_id[i]]
         #     clicked_topic[cur_topic].append(click_idx[i])
         #     clicked_subtopic[cur_subtopic].append(click_idx[i])
-        # TODO HieRec
         # user dimension: news title + news topic + 当前topic下的新闻 + news subtopic + 当前subtopic下的新闻
 
         # 初始化源索引为点击新闻的索引
@@ -439,6 +479,8 @@ class TrainGraphDataset(TrainDataset):
         #     candidate_key_entity = np.zeros(1)
         #     candidate_key_entity_mask = np.zeros(1)
         # print(f"candidate_key_entity: {candidate_key_entity}")
+
+
         # ------------------ Entity Subgraph --------------------
         if self.cfg.model.use_entity:
             # 提取候选新闻的实体部分，大小为 [batch_size, entity_size]
@@ -447,17 +489,15 @@ class TrainGraphDataset(TrainDataset):
             # origin_entity = candidate_input[:, -3 - self.cfg.model.entity_size:-3]  #[5, 5]
             # print(f"origin_entity: {origin_entity}")
             # 初始化候选实体邻居的矩阵，大小为 [(npratio+1) * entity_size, entity_neighbors]。 npratio: 负样本比例
-            candidate_neighbor_entity = np.zeros(((self.cfg.npratio+1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64) # [5*5, 20]
+            candidate_neighbor_entity = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64) # [5*5, 20]
             # 遍历所有实体索引
-            for cnt,idx in enumerate(origin_entity.flatten()):
+            for cnt, idx in enumerate(origin_entity.flatten()):
                 if idx == 0: continue
                 entity_dict_length = len(self.entity_neighbors[idx])
                 if entity_dict_length == 0: continue
                 valid_len = min(entity_dict_length, self.cfg.model.entity_neighbors)
                 candidate_neighbor_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
-
-
-            candidate_neighbor_entity = candidate_neighbor_entity.reshape(self.cfg.npratio+1, self.cfg.model.entity_size *self.cfg.model.entity_neighbors) # [5, 5*20]
+            candidate_neighbor_entity = candidate_neighbor_entity.reshape(self.cfg.npratio + 1, self.cfg.model.entity_size * self.cfg.model.entity_neighbors)  # [5, 5*20]
             entity_mask = candidate_neighbor_entity.copy()
             entity_mask[entity_mask > 0] = 1
             # 合并原始实体和邻居实体
@@ -469,6 +509,166 @@ class TrainGraphDataset(TrainDataset):
         else:
             candidate_entity = np.zeros(1)
             entity_mask = np.zeros(1)
+            # candidate_neighbor_entity = np.zeros(1)
+
+        # -------------------- Hetero Graph ------------------
+        # hetero_graph_info: 15 = topic + subtopic + trigger(3) + argument(5) + entity(5)
+        # hetero_graph_adjacent_pool: {news_id: {"strong_adjacent_pool": [], {"public_adjacent_pool: []}, {"indirect_entity_adjacent_pool": []}, {"indirect_non_entity_adjacent_pool": []}
+        # hetero_graph_adjacent_weights: {news_id: {"strong_adjacent_weights": [], {"public_adjacent_weights: []}, {"indirect_entity_adjacent_weights": []}, {"indirect_non_entity_adjacent_weights": []}
+        if self.cfg.model.use_hetero_graph:
+            # origin_entity = candidate_input[:, -8 - self.cfg.model.entity_size:-8]
+            # entity -> entity
+            # candidate_neighbor_first_order_entity = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64)  # [5*5, 20]
+            # entity -> entity -> entity
+            # candidate_neighbor_second_order_entity = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size * self.cfg.model.entity_neighbors, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64) # [5*5*20, 10]
+            indirect_entity_neighbors = np.zeros((len(sample_news), self.cfg.model.indirect_entity_num), dtype=np.int64)
+            for cnt, cand_news_index in enumerate(sample_news):
+                if cand_news_index == 0: continue
+                indirect_entity_num = len(self.indirect_entity_pool[cand_news_index])
+                if indirect_entity_num == 0: continue
+                valid_len = min(indirect_entity_num, self.cfg.model.indirect_entity_num)
+                indirect_entity_neighbors[cnt, :valid_len] = self.indirect_entity_pool[cand_news_index][:valid_len]
+                # print(f"{indirect_entity_neighbors[cnt, :valid_len]}")
+                # print(f"indirect_entity_neighbors[cnt]: {indirect_entity_neighbors[cnt]}")
+            indirect_entity_neighbors_mask = indirect_entity_neighbors.copy()
+            indirect_entity_neighbors_mask[indirect_entity_neighbors_mask > 0] = 1
+            # entity -> topic
+            # entity_topic_neighbor = np.zeros(((self.cfg.npratio+1) * self.cfg.model.entity_size, self.cfg.model.topic_neighbors_num), dtype=np.int64)
+            # entity -> topic -> entity
+            # entity_topic_entity_neighbor = np.zeros(((self.cfg.npratio+1) * self.cfg.model.entity_size * self.cfg.model.topic_neighbors_num, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64)
+            # entity -> subtopic
+            # entity_subtopic_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.subtopic_neighbors_num), dtype=np.int64)
+            # entity -> subtopic -> entity
+            # entity_subtopic_entity_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size * self.cfg.model.subtopic_neighbors_num, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64)
+            # entity -> trigger
+            # entity_trigger_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.trigger_neighbors_num), dtype=np.int64)
+            # entity -> trigger -> entity
+            # entity_trigger_entity_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size * self.cfg.model.trigger_neighbors_num, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64)
+            # entity -> argument
+            # entity_argument_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.argument_neighbors_num), dtype=np.int64)
+            # entity -> argument -> entity
+            # entity_argument_entity_neighbor = np.zeros(((self.cfg.npratio + 1) * self.cfg.model.entity_size * self.cfg.model.argument_neighbors_num, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64)
+
+            # for cnt, idx in enumerate(origin_entity.flatten()):
+            # for cnt, idx in enumerate(candidate_neighbor_entity.flatten()):
+                # if idx == 0: continue
+                # entity_dict_length = len(self.entity_neighbors[idx])
+                # if entity_dict_length == 0: continue
+                #
+                # valid_len = min(entity_dict_length, self.cfg.model.entity_neighbors)
+                # candidate_neighbor_first_order_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
+
+                # if idx == 0: continue
+                # entity_dict_length = len(self.entity_neighbors[idx])
+                # if entity_dict_length == 0: continue
+                # print(f"can reach 4")
+                # valid_len = min(entity_dict_length, self.cfg.model.second_order_entity_neighbors_num)
+                # candidate_neighbor_second_order_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
+
+                # topic_neighbor_len = len(self.hetero_neighbors['entity_topic'][idx])
+                # subtopic_neighbor_len = len(self.hetero_neighbors['entity_subtopic'][idx])
+                # trigger_neighbor_len = len(self.hetero_neighbors['entity_trigger'][idx])
+                # argument_neighbor_len = len(self.hetero_neighbors['entity_argument'][idx])
+                # valid_topic_len = min(topic_neighbor_len, self.cfg.model.topic_neighbors_num)
+                # valid_subtopic_len = min(subtopic_neighbor_len, self.cfg.model.subtopic_neighbors_num)
+                # valid_trigger_len = min(trigger_neighbor_len, self.cfg.model.trigger_neighbors_num)
+                # valid_argument_len = min(argument_neighbor_len, self.cfg.model.argument_neighbors_num)
+                # entity -> topic:
+                # entity_topic_neighbor[cnt, :valid_topic_len] = self.hetero_neighbors['entity_topic'][idx][:valid_topic_len]
+                # entity -> topic -> entity:
+                # for topic_cnt, topic_idx in enumerate(entity_topic_neighbor.flatten()):
+                #     if topic_idx == 0: continue
+                #     entity_neighbor_len = len(self.hetero_neighbors['topic_entity'][topic_idx])
+                #     if entity_neighbor_len == 0: continue
+                #     _valid_len = min(entity_neighbor_len, self.cfg.model.second_order_entity_neighbors_num)
+                #     entity_topic_entity_neighbor[topic_cnt, :_valid_len] = self.hetero_neighbors['topic_entity'][topic_idx][:_valid_len]
+
+                # entity -> subtopic:
+                # entity_subtopic_neighbor[cnt, :valid_subtopic_len] = self.hetero_neighbors['entity_subtopic'][idx][:valid_subtopic_len]
+                # entity -> subtopic -> entity:
+                # for subtopic_cnt, subtopic_idx in enumerate(entity_subtopic_neighbor.flatten()):
+                #     if subtopic_idx == 0: continue
+                #     entity_neighbor_len = len(self.hetero_neighbors['subtopic_entity'][subtopic_idx])
+                #     if entity_neighbor_len == 0: continue
+                #     print(f"can reach 1")
+                    # _valid_len = min(entity_neighbor_len, self.cfg.model.second_order_entity_neighbors_num)
+                    # entity_subtopic_entity_neighbor[subtopic_cnt, :_valid_len] = self.hetero_neighbors['subtopic_entity'][subtopic_idx][:_valid_len]
+
+                # entity -> trigger:
+                # entity_trigger_neighbor[cnt, :valid_trigger_len] = self.hetero_neighbors['entity_trigger'][idx][:valid_trigger_len]
+                # entity -> trigger -> entity:
+                # for trigger_cnt, trigger_idx in enumerate(entity_trigger_neighbor.flatten()):
+                #     if trigger_idx == 0: continue
+                #     entity_neighbor_len = len(self.hetero_neighbors['trigger_entity'][trigger_idx])
+                #     if entity_neighbor_len == 0: continue
+                    # print(f"can reach 2")
+                    # _valid_len = min(entity_neighbor_len, self.cfg.model.second_order_entity_neighbors_num)
+                    # entity_trigger_entity_neighbor[trigger_cnt, :_valid_len] = self.hetero_neighbors['trigger_entity'][trigger_idx][:_valid_len]
+
+                # entity -> argument:
+                # entity_argument_neighbor[cnt, :valid_argument_len] = self.hetero_neighbors['entity_argument'][idx][:valid_argument_len]
+                # entity -> argument -> entity:
+                # for argument_cnt, argument_idx in enumerate(entity_argument_neighbor.flatten()):
+                #     if argument_idx == 0: continue
+                #     entity_neighbor_len = len(self.hetero_neighbors['argument_entity'][argument_idx])
+                #     if entity_neighbor_len == 0: continue
+                    # print(f"can reach 3")
+                    # _valid_len = min(entity_neighbor_len, self.cfg.model.second_order_entity_neighbors_num)
+                    # entity_argument_entity_neighbor[argument_cnt, :_valid_len] = self.hetero_neighbors['argument_entity'][argument_idx][:_valid_len]
+
+            # for cnt, idx in enumerate(candidate_neighbor_first_order_entity.flatten()):
+            #     if idx == 0: continue
+            #     entity_dict_length = len(self.entity_neighbors[idx])
+            #     if entity_dict_length == 0: continue
+            #     print(f"can reach 4")
+                # valid_len = min(entity_dict_length, self.cfg.model.second_order_entity_neighbors_num)
+                # candidate_neighbor_second_order_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
+
+            # candidate_neighbor_first_order_entity = candidate_neighbor_first_order_entity.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.entity_neighbors)
+            # candidate_neighbor_second_order_entity = candidate_neighbor_second_order_entity.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.entity_neighbors, self.cfg.model.second_order_entity_neighbors_num)
+            # entity_topic_entity_neighbor = entity_topic_entity_neighbor.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.topic_neighbors_num, self.cfg.model.second_order_entity_neighbors_num)
+            # entity_subtopic_entity_neighbor = entity_subtopic_entity_neighbor.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.subtopic_neighbors_num, self.cfg.model.second_order_entity_neighbors_num)
+            # entity_trigger_entity_neighbor = entity_trigger_entity_neighbor.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.trigger_neighbors_num, self.cfg.model.second_order_entity_neighbors_num)
+            # entity_argument_entity_neighbor = entity_argument_entity_neighbor.reshape(self.cfg.npratio+1, self.cfg.model.entity_size * self.cfg.model.argument_neighbors_num, self.cfg.model.second_order_entity_neighbors_num)
+
+            # first_order_entity_mask = candidate_neighbor_first_order_entity.copy()
+            # first_order_entity_mask[first_order_entity_mask > 0] = 1
+            # second_order_entity_mask = candidate_neighbor_second_order_entity.copy()
+            # second_order_entity_mask[second_order_entity_mask > 0] = 1
+            # entity_topic_entity_mask = entity_topic_entity_neighbor.copy()
+            # entity_topic_entity_mask[entity_topic_entity_mask > 0] = 1
+            # entity_subtopic_entity_mask = entity_subtopic_entity_neighbor.copy()
+            # entity_subtopic_entity_mask[entity_subtopic_entity_mask > 0] = 1
+            # entity_trigger_entity_mask = entity_trigger_entity_neighbor.copy()
+            # entity_trigger_entity_mask[entity_trigger_entity_mask > 0] = 1
+            # entity_argument_entity_mask = entity_argument_entity_neighbor.copy()
+            # entity_argument_entity_mask[entity_argument_entity_mask > 0] = 1
+
+            # entity -> entity [5 * 5] [5 * 10]
+            # first_order_entity = np.concatenate((origin_entity, candidate_neighbor_first_order_entity), axis=-1)
+            # entity -> entity -> entity
+            # print(f"origin_entity: {origin_entity}") # [5*5]
+            # print(f"second_entity.shape: {candidate_neighbor_second_order_entity.shape}") # [5 * 50 * 10]
+            # second_order_entity = np.concatenate((origin_entity, candidate_neighbor_second_order_entity), axis=-2)
+            # entity -> topic -> entity
+        else:
+            # candidate_neighbor_second_order_entity = np.zeros(1)
+            # second_order_entity_mask = np.zeros(1)
+            indirect_entity_neighbors = np.zeros(1)
+            indirect_entity_neighbors_mask = np.zeros(1)
+
+            # entity_topic_entity_neighbor = np.zeros(1)
+            # entity_topic_entity_mask = np.zeros(1)
+            # entity_subtopic_entity_neighbor = np.zeros(1)
+            # entity_subtopic_entity_mask = np.zeros(1)
+            # entity_trigger_entity_neighbor = np.zeros(1)
+            # entity_trigger_entity_mask = np.zeros(1)
+            # entity_argument_entity_neighbor = np.zeros(1)
+            # entity_argument_entity_mask = np.zeros(1)
+
+
+
+
 
         # --------------Abstract Entity Graph-----------------
         # if self.cfg.model.use_abs_entity:
@@ -543,7 +743,8 @@ class TrainGraphDataset(TrainDataset):
             sum_num_news + sub_news_graph.num_nodes, clicked_event, candidate_event, \
             topic_ids, topic_ids_mask, \
             subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, \
-            clicked_event_mask
+            clicked_event_mask, \
+            indirect_entity_neighbors, indirect_entity_neighbors_mask
             # clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask, \
 
 
@@ -553,19 +754,27 @@ class TrainGraphDataset(TrainDataset):
         device = self.news_graph.x.device
 
         # subset: 要构建子图的结点子集
-        if not subset: 
+        if not subset:
             subset = [0]
-            
+
         subset = torch.tensor(subset, dtype=torch.long, device=device)
-        
+
         unique_subset, unique_mapping = torch.unique(subset, sorted=True, return_inverse=True)
         subemb = self.news_graph.x[unique_subset]
 
         sub_edge_index, sub_edge_attr = subgraph(unique_subset, self.news_graph.edge_index, self.news_graph.edge_attr, relabel_nodes=True, num_nodes=self.news_graph.num_nodes)
-                    
+
         sub_news_graph = Data(x=subemb, edge_index=sub_edge_index, edge_attr=sub_edge_attr)
 
         return sub_news_graph, unique_mapping[:k]+sum_num_nodes
+
+
+
+    def build_hetero_subgraph(self, subset, k, sum_num_nodes):
+        device = self.news_graph.x.device
+
+        if not subset:
+            subset = [0]
 
 
 
@@ -600,6 +809,12 @@ class TrainGraphDataset(TrainDataset):
             clicked_subtopic_mask_list = []
             clicked_subtopic_news_list = []
             clicked_subtopic_news_mask_list = []
+
+            candidate_second_order_entity_list = []
+            candidate_second_order_entity_mask_list = []
+            indirect_entity_list = []
+            indirect_entity_mask_list = []
+
             # user_id_list = []
 
             sum_num_news = 0
@@ -612,7 +827,8 @@ class TrainGraphDataset(TrainDataset):
                     sub_newsgraph, padded_mapping_idx, candidate_input, candidate_entity, entity_mask, label, sum_num_news, \
                         clicked_event, candidate_event, \
                         topic_ids, topic_ids_mask, subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_mask, \
-                        clicked_event_mask = self.line_mapper(line, sum_num_news)
+                        clicked_event_mask, \
+                        indirect_entity_neighbors, indirect_entity_neighbors_mask = self.line_mapper(line, sum_num_news)
 
                     clicked_graphs.append(sub_newsgraph)
                     candidates.append(torch.from_numpy(candidate_input))
@@ -659,6 +875,11 @@ class TrainGraphDataset(TrainDataset):
                     # clicked_subtopic_news_list.append(torch.from_numpy(np.array(subtopic_news_lists)))
                     # clicked_subtopic_news_mask_list.append(torch.from_numpy(subtopic_news_id_mask))
 
+                    # candidate_second_order_entity_list.append(torch.tensor(candidate_neighbor_second_order_entity))
+                    # candidate_second_order_entity_mask_list.append(torch.tensor(second_order_entity_mask))
+                    indirect_entity_list.append(torch.tensor(indirect_entity_neighbors))
+                    indirect_entity_mask_list.append(torch.tensor(indirect_entity_neighbors_mask))
+
                     # user_id_list.append(torch.tensor(int(user_id[1:])))
 
                     # if abs_candidate_entity is not None:
@@ -689,6 +910,11 @@ class TrainGraphDataset(TrainDataset):
                         clicked_subtopic_mask_list = torch.stack(clicked_subtopic_mask_list)
                         clicked_subtopic_news_list = torch.stack(clicked_subtopic_news_list)
                         clicked_subtopic_news_mask_list = torch.stack(clicked_subtopic_news_mask_list)
+
+                        # candidate_second_order_entity_list = torch.stack(candidate_second_order_entity_list)
+                        # candidate_second_order_entity_mask_list = torch.stack(candidate_second_order_entity_mask_list)
+                        indirect_entity_list = torch.stack(indirect_entity_list)
+                        indirect_entity_mask_list = torch.stack(indirect_entity_mask_list)
                         # user_id_list = torch.stack(user_id_list)
 
                         # if len(clicked_key_entity_list) > 0:
@@ -710,14 +936,16 @@ class TrainGraphDataset(TrainDataset):
                             clicked_event_list, candidate_event_list, \
                             clicked_topic_list, clicked_topic_mask_list, \
                             clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list, \
-                            clicked_event_mask_list
+                            clicked_event_mask_list, \
+                            indirect_entity_list, indirect_entity_mask_list
                             # clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list,
 
                         # clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list, \
                         clicked_graphs, mappings ,candidates, labels, candidate_entity_list, entity_mask_list, \
                             clicked_event_list, candidate_event_list,  \
                             clicked_topic_list, clicked_topic_mask_list, clicked_subtopic_list, \
-                                clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list, clicked_event_mask_list  = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
+                            clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list, clicked_event_mask_list, \
+                            indirect_entity_list, indirect_entity_mask_list = [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
                         sum_num_news = 0
                         # print(7)
                 if (len(clicked_graphs) > 0):
@@ -744,6 +972,12 @@ class TrainGraphDataset(TrainDataset):
                     clicked_subtopic_mask_list = torch.stack(clicked_subtopic_mask_list)
                     clicked_subtopic_news_list = torch.stack(clicked_subtopic_news_list)
                     clicked_subtopic_news_mask_list = torch.stack(clicked_subtopic_news_mask_list)
+
+                    # candidate_second_order_entity_list = torch.stack(candidate_second_order_entity_list)
+                    # candidate_second_order_entity_mask_list = torch.stack(candidate_second_order_entity_mask_list)
+                    indirect_entity_list = torch.stack(indirect_entity_list)
+                    indirect_entity_mask_list = torch.stack(indirect_entity_mask_list)
+
                     # user_id_list = torch.stack(user_id_list)
 
                     labels = torch.tensor(labels, dtype=torch.long)
@@ -757,15 +991,22 @@ class TrainGraphDataset(TrainDataset):
                         clicked_event_list, candidate_event_list, \
                         clicked_topic_list, clicked_topic_mask_list, \
                         clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list, \
-                        clicked_event_mask_list
+                        clicked_event_mask_list, \
+                        indirect_entity_list, indirect_entity_mask_list
+
                     # clicked_key_entity_list, clicked_key_entity_mask_list, candidate_key_entity_list, candidate_key_entity_mask_list, \
                     # print(8)
                     f.seek(0)
 
 
 class ValidGraphDataset(TrainGraphDataset):
-    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, news_entity, event_index, event_input, topic_dict, subtopic_dict, news_topic_map, news_subtopic_map, user_history_map, news_idx_input, node_dict, node_index, hetero_graph, hetero_graph_news_input):
-        super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, event_index, event_input, topic_dict, subtopic_dict, news_topic_map, news_subtopic_map, user_history_map, node_dict, node_index, hetero_graph, hetero_graph_news_input)
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors,
+                 news_entity, event_index, event_input, topic_dict, subtopic_dict, news_topic_map, news_subtopic_map,
+                 user_history_map, news_idx_input, node_dict, node_index, hetero_graph, hetero_graph_news_input,
+                 hetero_neighbors, hetero_neighbors_weights, hetero_graph_adjacent_pool, hetero_graph_adjacent_weights,
+                 direct_entity_pool, indirect_entity_pool):
+        super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, event_index, event_input, topic_dict, subtopic_dict, news_topic_map, news_subtopic_map, user_history_map, node_dict, node_index, hetero_graph, hetero_graph_news_input, hetero_neighbors, hetero_neighbors_weights, hetero_graph_adjacent_pool, hetero_graph_adjacent_weights, direct_entity_pool, indirect_entity_pool)
+
         self.news_graph.x = torch.from_numpy(self.news_input).to(local_rank, non_blocking=True)
         self.news_entity = news_entity
         self.news_input = news_input
@@ -783,6 +1024,12 @@ class ValidGraphDataset(TrainGraphDataset):
         self.node_index = node_index
         self.hetero_graph = hetero_graph
         self.hetero_graph_news_input = hetero_graph_news_input
+        self.hetero_neighbors = hetero_neighbors
+        self.hetero_neighbors_weights = hetero_neighbors_weights
+        self.hetero_graph_adjacent_pool = hetero_graph_adjacent_pool
+        self.hetero_graph_adjacent_weights = hetero_graph_adjacent_weights
+        self.direct_entity_pool = direct_entity_pool
+        self.indirect_entity_pool = indirect_entity_pool
 
     def line_mapper(self, line):
 
@@ -909,14 +1156,14 @@ class ValidGraphDataset(TrainGraphDataset):
         if self.cfg.model.use_entity:
             origin_entity = self.news_entity[candidate_index]
             candidate_neighbor_entity = np.zeros((len(candidate_index)*self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64)
-            for cnt,idx in enumerate(origin_entity.flatten()):
+            for cnt, idx in enumerate(origin_entity.flatten()):
                 if idx == 0: continue
                 entity_dict_length = len(self.entity_neighbors[idx])
                 if entity_dict_length == 0: continue
                 valid_len = min(entity_dict_length, self.cfg.model.entity_neighbors)
                 candidate_neighbor_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
-            
-            candidate_neighbor_entity = candidate_neighbor_entity.reshape(len(candidate_index), self.cfg.model.entity_size *self.cfg.model.entity_neighbors)
+
+            candidate_neighbor_entity = candidate_neighbor_entity.reshape(len(candidate_index), self.cfg.model.entity_size * self.cfg.model.entity_neighbors)
        
             entity_mask = candidate_neighbor_entity.copy()
             entity_mask[entity_mask > 0] = 1
@@ -925,6 +1172,43 @@ class ValidGraphDataset(TrainGraphDataset):
         else:
             candidate_entity = np.zeros(1)
             entity_mask = np.zeros(1)
+            # candidate_neighbor_entity = np.zeros(1)
+
+        # -------------------- Hetero Graph ------------------
+        if self.cfg.model.use_hetero_graph:
+            # candidate_second_order_entity_neighbor = np.zeros((len(candidate_index) * self.cfg.model.entity_size * self.cfg.model.entity_neighbors, self.cfg.model.second_order_entity_neighbors_num), dtype=np.int64)
+            indirect_entity_neighbors = np.zeros((len(candidate_index), self.cfg.model.indirect_entity_num), dtype=np.int64)
+            # for cnt, idx in enumerate(candidate_neighbor_entity.flatten()):
+            #     if idx == 0: continue
+            #     entity_dict_length = len(self.entity_neighbors[idx])
+            #     if entity_dict_length == 0: continue
+            #     valid_len = min(entity_dict_length, self.cfg.model.second_order_entity_neighbors_num)
+            #     candidate_second_order_entity_neighbor[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
+            #
+            # candidate_second_order_entity_neighbor = candidate_second_order_entity_neighbor.reshape(len(candidate_index), self.cfg.model.entity_size * self.cfg.model.entity_neighbors, self.cfg.model.second_order_entity_neighbors_num)
+            # # candidate_second_order_entity_neighbor = np.zeros(1)
+            # second_order_entity_mask = candidate_second_order_entity_neighbor.copy()
+            # second_order_entity_mask[second_order_entity_mask > 0] = 1
+            # second_order_entity_mask = np.zeros(1)
+
+            for cnt, cand_news_index in enumerate(candidate_index):
+                if cand_news_index == 0: continue
+                indirect_entity_num = len(self.indirect_entity_pool[cand_news_index])
+                if indirect_entity_num == 0: continue
+                valid_len = min(indirect_entity_num, self.cfg.model.indirect_entity_num)
+                indirect_entity_neighbors[cnt, :valid_len] = self.indirect_entity_pool[cand_news_index][:valid_len]
+                # indirect_entity_neighbors[cnt] = self.indirect_entity_pool[cand_news_index]
+            # indirect_entity_neighbors = np.zeros(1)
+            indirect_entity_neighbors_mask = indirect_entity_neighbors.copy()
+            indirect_entity_neighbors_mask[indirect_entity_neighbors_mask > 0] = 1
+        else:
+            # candidate_second_order_entity_neighbor = np.zeros(1)
+            # second_order_entity_mask = np.zeros(1)
+            indirect_entity_neighbors = np.zeros(1)
+            indirect_entity_neighbors_mask = np.zeros(1)
+
+
+
 
         # abs_candidate_entity, abs_entity_mask, subcategories = None, None, None
         # # ------------------ Abstract Entity ---------------
@@ -978,7 +1262,6 @@ class ValidGraphDataset(TrainGraphDataset):
         #         candidate_neighbor_subcategory[cnt, :valid_len] = self.subcategory_neighbors[idx_tuple[0]][:valid_len]
         #         # print(f"candidate_neighbor_subcategory of subcategory idx{sub_idx}: {self.subcategory_neighbors[idx_tuple[0]][:valid_len]}")
         #
-        #     # TODO ?
         #     candidate_neighbor_subcategory.reshape(len(candidate_index), self.cfg.model.subcategory_neighbors)
         #     # print(f"type(origin_subcategory): {type(origin_subcategory)}")
         #     # print(f"type(candidate_neighbor_subcategory): {type(candidate_neighbor_subcategory)}")
@@ -1051,7 +1334,8 @@ class ValidGraphDataset(TrainGraphDataset):
             clicked_event, candidate_event, \
             topic_ids, topic_ids_mask,  \
             subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, \
-            clicked_event_mask
+            clicked_event_mask, \
+            indirect_entity_neighbors, indirect_entity_neighbors_mask
             #clicked_key_entity, clicked_key_entity_mask, candidate_key_entity, candidate_key_entity_mask, \
 
     def __iter__(self):
@@ -1066,7 +1350,7 @@ class ValidGraphDataset(TrainGraphDataset):
 
         for line in open(self.filename):
             if line.strip().split('\t')[3]:
-                batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  topic_ids, topic_ids_mask, subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, clicked_event_mask = self.line_mapper(line)
+                batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  topic_ids, topic_ids_mask, subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, clicked_event_mask, indirect_entity_neighbors, indirect_entity_neighbors_mask = self.line_mapper(line)
                 subtopic_news_lists = torch.tensor(np.array(subtopic_news_lists))
                 subtopic_news_lists = subtopic_news_lists.unsqueeze(0)
                 # print(f"subtopic_news_lists.shape: {subtopic_news_lists.shape}") # [15, 5, 43]
@@ -1086,7 +1370,7 @@ class ValidGraphDataset(TrainGraphDataset):
                 # print(f"topic_ids.shape: {topic_ids.shape}")
                 # print(f"clicked_entity.shape: {clicked_entity.shape}")
                 # print(f"subtopic_news_list.shape: {subtopic_news_lists.shape}")
-            yield batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  topic_ids, topic_ids_mask, subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, clicked_event_mask
+            yield batch, mapping_idx, clicked_entity, candidate_input, candidate_entity, entity_mask, labels, clicked_event, candidate_event,  topic_ids, topic_ids_mask, subtopic_ids, subtopic_ids_mask, subtopic_news_lists, subtopic_news_id_lists_mask, clicked_event_mask, indirect_entity_neighbors, indirect_entity_neighbors_mask
 
 
 class NewsDataset(Dataset):

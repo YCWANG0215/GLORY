@@ -46,6 +46,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
     node_index = json.load(open(Path(data_dir[mode]) / "node_index.json", "rb"))
     hetero_graph = torch.load(open(Path(data_dir[mode]) / "hetero_graph.pt", "rb"))
     hetero_graph_news_input = pickle.load(open(Path(data_dir[mode]) / "hetero_graph_news_input.bin", "rb"))
+    hetero_graph_adjacent_pool = json.load(open(Path(data_dir[mode]) / "hetero_graph_adjacent_pool.bin", "rb"))
+    hetero_graph_adjacent_weights = json.load(open(Path(data_dir[mode]) / "hetero_graph_adjacent_weights.bin", "rb"))
+    direct_entity_pool = pickle.load(open(Path(data_dir[mode]) / "direct_entity_pool.bin", "rb"))
+    indirect_entity_pool = pickle.load(open(Path(data_dir[mode]) / "indirect_entity_pool.bin", "rb"))
+
+
+
 
     # print(f"len(key_entities) = {len(key_entities)}")
     # key_entity_input_mask = pickle.load(open(Path(data_dir[mode]) / "key_entities_mask.bin", "rb"))
@@ -83,6 +90,15 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 print(f"[{mode}] entity_neighbor list Length: {total_length}")
             else:
                 entity_neighbors = None
+
+            if cfg.model.use_hetero_graph:
+                hetero_graph = torch.load(Path(data_dir[mode]) / "hetero_graph.pt")
+                hetero_neighbors = pickle.load(open(Path(data_dir[mode]) / "hetero_neighbor_dict.bin", "rb"))
+                hetero_neighbors_weights = pickle.load(open(Path(data_dir[mode]) / "hetero_weights_dict.bin", "rb"))
+            else:
+                hetero_graph = None
+                hetero_neighbors = None
+                hetero_neighbors_weights = None
 
             # 添加摘要实体图、类别图
             # if cfg.model.use_abs_entity:
@@ -139,7 +155,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 node_dict=node_dict,
                 node_index=node_index,
                 hetero_graph=hetero_graph,
-                hetero_graph_news_input=hetero_graph_news_input
+                hetero_graph_news_input=hetero_graph_news_input,
+                hetero_neighbors=hetero_neighbors,
+                hetero_neighbors_weights=hetero_neighbors_weights,
+                hetero_graph_adjacent_pool=hetero_graph_adjacent_pool,
+                hetero_graph_adjacent_weights=hetero_graph_adjacent_weights,
+                direct_entity_pool=direct_entity_pool,
+                indirect_entity_pool=indirect_entity_pool
             )
             dataloader = DataLoader(dataset, batch_size=None)
             
@@ -286,7 +308,14 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
-            # if cfg.model.use_HieRec:
+            if cfg.model.use_hetero_graph:
+                hetero_graph = torch.load(Path(data_dir[mode]) / "hetero_graph.pt")
+                hetero_neighbors = pickle.load(open(Path(data_dir[mode]) / "hetero_neighbor_dict.bin", "rb"))
+                hetero_neighbors_weights = pickle.load(open(Path(data_dir[mode]) / "hetero_weights_dict.bin", "rb"))
+            else:
+                hetero_graph = None
+                hetero_neighbors = None
+                hetero_neighbors_weights = None
 
 
             # if cfg.model.use_abs_entity:
@@ -336,7 +365,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     node_dict=node_dict,
                     node_index=node_index,
                     hetero_graph=hetero_graph,
-                    hetero_graph_news_input=hetero_graph_news_input
+                    hetero_graph_news_input=hetero_graph_news_input,
+                    hetero_neighbors=hetero_neighbors,
+                    hetero_neighbors_weights=hetero_neighbors_weights,
+                    hetero_graph_adjacent_pool=hetero_graph_adjacent_pool,
+                    hetero_graph_adjacent_weights=hetero_graph_adjacent_weights,
+                    direct_entity_pool=direct_entity_pool,
+                    indirect_entity_pool=indirect_entity_pool
                 )
 
             elif mode == 'test':
@@ -370,7 +405,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     node_dict=node_dict,
                     node_index=node_index,
                     hetero_graph=hetero_graph,
-                    hetero_graph_news_input=hetero_graph_news_input
+                    hetero_graph_news_input=hetero_graph_news_input,
+                    hetero_neighbors=hetero_neighbors,
+                    hetero_neighbors_weights=hetero_neighbors_weights,
+                    hetero_graph_adjacent_pool=hetero_graph_adjacent_pool,
+                    hetero_graph_adjacent_weights=hetero_graph_adjacent_weights,
+                    direct_entity_pool=direct_entity_pool,
+                    indirect_entity_pool=indirect_entity_pool
                 )
 
             dataloader = DataLoader(dataset, batch_size=None)

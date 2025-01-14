@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from nltk.tokenize import word_tokenize
 from torch import scatter
-from torch_geometric.data import Data
+from torch_geometric.data import Data, HeteroData
 from torch_geometric.utils import to_undirected
 
 import torch.nn.functional as F
@@ -217,6 +217,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # provided_entity = []
             # provided_entity_abs = []
             # Entity
+
             if t_entity_str:
                 entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
                 # print(f"{news_id}: {abs_entity_str}")
@@ -224,7 +225,10 @@ def read_raw_news(cfg, file_path, mode='train'):
                 # print(f"news_id: {news_id}: abs_entity_ids: {abs_entity_ids}")
                 # print(f"abs_entity: {abs_entity_str}")
                 # entity_ids += abs_entity_ids
-                [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
+                [update_dict(target_dict=entity_dict, key=entity_id, value=node_dict['entity'][entity_id]) for entity_id in entity_ids]
+                # for entity_id in entity_ids:
+                #     print(f"{entity_id}: {node_dict['entity'][entity_id]}")
+                # [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
                 # provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
             else:
                 entity_ids = t_entity_str
@@ -304,7 +308,7 @@ def read_raw_news(cfg, file_path, mode='train'):
                 #     roles.append(role_type)
                 #     update_dict(target_dict=role_dict, key=role_type)
 
-            # TODO 根据置信度确定最终事件类型
+
             # if len(event_types) != 0:
             #     max_confidence = max(event_type_confidence)
             #     max_confidence_indices = [i for i, confidence in enumerate(event_type_confidence) if confidence == max_confidence]
@@ -313,7 +317,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             #     event_type = f"Regular.{category}"
             #     event_type = f"{category}.{subcategory}"
             # print(f"event_type: {event_type}")
-            # TODO 根据置信度确定最终事件类型
+
             # if len(event_types) != 0:
                 # max_confidence = max(event_type_confidence)
                 # max_confidence_indices = [i for i, confidence in enumerate(event_type_confidence) if
@@ -334,7 +338,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # event_entities_tuples = [tuple(entity) for entity in event_entities]
             # key_entity_tuples = list(set(provided_entity_tuples) & set(event_entities_tuples))
 
-            # TODO one line
+
             # key_entity_list = []
             # key_entity_list = list(set(provided_entity) & set(event_entities))
 
@@ -348,7 +352,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # if key_entity_list:
             # print(f"type(key_entity) = {type(key_entity_list)}")
 
-            # TODO
+
             # key_entity_ids = []
             # for key_entity in key_entity_list:
             #     for obj in json.loads(t_entity_str):
@@ -363,7 +367,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # print(f"key_entity: {key_entity}")
             # print(f"key_entity_ids = {key_entity_ids}")
 
-            # TODO 已经拿到这条news_id对应的key_entity的wikidataID（Q开头的），接下来从entity_dict中取出这些wikidataID对应的entity序号
+
 
             # actual_key_entity_ids = []
             # print(f"key_entity_size: {cfg.model.key_entity_size}")
@@ -399,7 +403,7 @@ def read_raw_news(cfg, file_path, mode='train'):
 
             # abs_tokens = word_tokenize(abstract.lower(), language=cfg.dataset.dataset_lang)
 
-            # TODO key_entity要不要Glove编码
+
             # event = {
             #     "event_type": event_type,
             #     "event_type_idx": event_type_dict[event_type],
@@ -418,7 +422,7 @@ def read_raw_news(cfg, file_path, mode='train'):
             # print(f"category: {category}, category_dict_value: {category_dict[category]}, node_dict: {node_dict['topic'][category]}")
             update_dict(target_dict=subcategory_dict, key=subcategory, value=node_dict["subtopic"][subcategory])
             # print(f"subcategory: {subcategory}, subcategory_dict_value: {subcategory_dict[subcategory]}, node_dict: {node_dict['subtopic'][subcategory]}")
-            # TODO one line
+
             update_dict(target_dict=events, key=news_id, value=[event_type, event_type_dict[event_type], event_entities, category, subcategory, triggers])
             # print(f"events: f{events[news_id]}")
             # update_dict(target_dict=events, key=news_id, value=event)
@@ -741,6 +745,7 @@ def prepare_preprocess_bin(cfg, mode):
 
         hetero_graph_info = prepare_hetero_graph_info(cfg, node_dict, mode, nltk_news_dict)
         hetero_graph_news_input = np.concatenate([x for x in hetero_graph_info], axis=1)
+        # print(f"hetero_graph_news_input.shape: {hetero_graph_news_input.shape}") # [51283, 15]
         pickle.dump(hetero_graph_news_input, open(Path(data_dir[mode]) / "hetero_graph_news_input.bin", "wb") )
 
         print("Glove token preprocess finish.")
@@ -834,7 +839,7 @@ def prepare_news_graph(cfg, mode='train'):
         # print(data.x)
 
         torch.save(data, target_path)
-        print(data)
+        # print(data)
         print(f"[{mode}] Finish News Graph Construction, \nGraph Path: {target_path} \nGraph Info: {data}")
     
     elif mode in ['test', 'val']:
@@ -992,7 +997,6 @@ def prepare_neighbor_list(cfg, mode='train', target='news'):
         print(f"[{mode}] All {target} Neighbor dict exist !")
         return
 
-    # TODO 处理abs_entity_graph.pt、subcategory_graph.pt
     if target == 'news':
         print(f"preparing for new graph neighbor...")
         target_graph_path = Path(data_dir[mode]) / "nltk_news_graph.pt"
@@ -1024,7 +1028,6 @@ def prepare_neighbor_list(cfg, mode='train', target='news'):
     edge_index = graph_data.edge_index
     edge_attr = graph_data.edge_attr
 
-    # TODO 有向图or无向图
     if cfg.model.directed is False:
         edge_index, edge_attr = to_undirected(edge_index, edge_attr)
 
@@ -1044,12 +1047,220 @@ def prepare_neighbor_list(cfg, mode='train', target='news'):
         # 根据排序后的索引更新邻居节点列表
         neighbor_dict[i] = neighbor_nodes[indices].tolist()
         neighbor_weights_dict[i] = sorted_weights.tolist()
-    
+    # TODO 上面是入度 要不要做出度？
+
+
+
     pickle.dump(neighbor_dict, open(neighbor_dict_path, "wb"))
     pickle.dump(neighbor_weights_dict, open(weights_dict_path, "wb"))
     print(f"[{mode}] Finish {target} Neighbor dict \nDict Path: {neighbor_dict_path}, \nWeight Dict: {weights_dict_path}")
 
-# TODO 实体图
+
+def prepare_hetero_neighbor_list(cfg, mode='train'):
+    print(f"[{mode}] Start to process hetero graph neighbors list")
+
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+
+    neighbor_dict_path = Path(data_dir[mode]) / f"hetero_neighbor_dict.bin"
+    weights_dict_path = Path(data_dir[mode]) / f"hetero_weights_dict.bin"
+
+    reprocess_flag = False
+    for file_path in [neighbor_dict_path, weights_dict_path]:
+        if file_path.exists() is False:
+            reprocess_flag = True
+
+    if (reprocess_flag == False) and (cfg.reprocess == False) and (cfg.reprocess_neighbors == False):
+        print(f"[{mode}] Hetero Graph Neighbor dict exist !")
+        return
+
+    node_types = ['topic', 'subtopic', 'trigger', 'argument', 'entity']
+
+    # meta_path_type = [
+    #     ['entity', 'entity', 'entity'],
+    #     ['entity', 'topic', 'entity'],
+    #     ['entity', 'subtopic', 'entity'],
+    #     ['entity', 'trigger', 'entity'],
+    #     ['entity', 'argument', 'entity'],
+    #     ['argument', 'entity'],
+    #     ['entity', 'entity'],
+    #     ['trigger', 'entity'],
+    #     ['subtopic', 'entity'],
+    #     ['topic', 'entity']
+    # ]
+
+    hetero_graph_path = Path(data_dir[mode]) / "hetero_graph.pt"
+    origin_graph = torch.load(hetero_graph_path)
+    node_index = json.load(open(Path(data_dir[mode]) / "node_index.json"))
+
+    data = HeteroData()
+    data['topic'].x = origin_graph['topic']
+    data['subtopic'].x = origin_graph['subtopic']
+    data['trigger'].x = origin_graph['trigger']
+    data['argument'].x = origin_graph['argument']
+    data['entity'].x = origin_graph['entity']
+
+    data['entity', 'to', 'topic'].edge_index = origin_graph['entity', 'to', 'topic'].edge_index
+    data['entity', 'to', 'subtopic'].edge_index = origin_graph['entity', 'to', 'subtopic'].edge_index
+    data['entity', 'to', 'trigger'].edge_index = origin_graph['entity', 'to', 'trigger'].edge_index
+    data['entity', 'to', 'argument'].edge_index = origin_graph['entity', 'to', 'argument'].edge_index
+    data['entity', 'to', 'entity'].edge_index = origin_graph['entity', 'to', 'entity'].edge_index
+    data['topic', 'to', 'entity'].edge_index = origin_graph['topic', 'to', 'entity'].edge_index
+    data['subtopic', 'to', 'entity'].edge_index = origin_graph['subtopic', 'to', 'entity'].edge_index
+    data['trigger', 'to', 'entity'].edge_index = origin_graph['trigger', 'to', 'entity'].edge_index
+    data['argument', 'to', 'entity'].edge_index = origin_graph['argument', 'to', 'entity'].edge_index
+
+    data['entity', 'to', 'topic'].edge_attr = origin_graph['entity', 'to', 'topic'].edge_attr
+    data['entity', 'to', 'subtopic'].edge_attr = origin_graph['entity', 'to', 'subtopic'].edge_attr
+    data['entity', 'to', 'trigger'].edge_attr = origin_graph['entity', 'to', 'trigger'].edge_attr
+    data['entity', 'to', 'argument'].edge_attr = origin_graph['entity', 'to', 'argument'].edge_attr
+    data['entity', 'to', 'entity'].edge_attr = origin_graph['entity', 'to', 'entity'].edge_attr
+    data['topic', 'to', 'entity'].edge_attr = origin_graph['topic', 'to', 'entity'].edge_attr
+    data['subtopic', 'to', 'entity'].edge_attr = origin_graph['subtopic', 'to', 'entity'].edge_attr
+    data['trigger', 'to', 'entity'].edge_attr = origin_graph['trigger', 'to', 'entity'].edge_attr
+    data['argument', 'to', 'entity'].edge_attr = origin_graph['argument', 'to', 'entity'].edge_attr
+
+    edge_types = ['entity_topic', 'entity_subtopic', 'entity_trigger', 'entity_argument','entity_entity',
+                  'topic_entity', 'subtopic_entity', 'trigger_entity', 'argument_entity']
+
+    neighbor_dict = {edge_type: collections.defaultdict(list) for edge_type in edge_types}
+    neighbor_weights_dict = {edge_type: collections.defaultdict(list) for edge_type in edge_types}
+
+
+    # for src_node_type in node_types:
+    #     # 源节点是entity，遍历所有类型的邻居
+    #     for dst_node_type in node_types:
+    #         if src_node_type != 'entity' and dst_node_type != 'entity':
+    #             continue
+    #         edge_type = f'{src_node_type}_{dst_node_type}'
+    #         for i in range(1, len(node_index[dst_node_type]) + 1):
+    #             # 查找目标结点为i的所有边索引 找起始结点为i的所有边索引？
+    #             dst_edges = torch.where(data[src_node_type, 'to', dst_node_type].edge_index[1] == i)[0]
+    #             neighbor_weights = data[src_node_type, 'to', dst_node_type].edge_attr[dst_edges]
+    #             # 起始结点
+    #             neighbor_nodes = data[src_node_type, 'to', dst_node_type].edge_index[0][dst_edges]
+    #             sorted_weights, indices = torch.sort(neighbor_weights, descending=True)
+    #             neighbor_dict[edge_type][i] = neighbor_nodes[indices].tolist()
+    #             neighbor_weights_dict[edge_type][i] = sorted_weights.tolist()
+
+    for src_node_type in node_types:
+        # 源节点是entity，遍历所有类型的邻居
+        for dst_node_type in node_types:
+            if src_node_type != 'entity' and dst_node_type != 'entity':
+                continue
+            edge_type = f'{src_node_type}_{dst_node_type}'
+            for i in range(1, len(node_index[src_node_type]) + 1):
+                # 找起始结点为i的所有边索引
+                edges_idx = torch.where(data[src_node_type, 'to', dst_node_type].edge_index[0] == i)[0]
+                neighbor_weights = data[src_node_type, 'to', dst_node_type].edge_attr[edges_idx]
+                # 边的终点
+                neighbor_nodes = data[src_node_type, 'to', dst_node_type].edge_index[1][edges_idx]
+                sorted_weights, indices = torch.sort(neighbor_weights, descending=True)
+                neighbor_dict[edge_type][i] = neighbor_nodes[indices].tolist()
+                neighbor_weights_dict[edge_type][i] = sorted_weights.tolist()
+
+    pickle.dump(neighbor_dict, open(neighbor_dict_path, 'wb'))
+    pickle.dump(neighbor_weights_dict, open(weights_dict_path, 'wb'))
+    print(f"[{mode}] Finish Hetero Graph Neighbor dict.")
+
+
+def update_entity_pool_dict(entity_pool_dict, entity_ids, entity_weights):
+    for entity, weight in zip(entity_ids, entity_weights):
+        if entity in entity_pool_dict:
+            entity_pool_dict[entity] += weight
+        else:
+            entity_pool_dict[entity] = weight
+
+    return entity_pool_dict
+
+def build_direct_entity_pool(cfg, public_adjacent_pool, public_adjacent_weights, strong_adjacent_pool, strong_adjacent_weights):
+    direct_entity_pool_dict = {}
+    # update_entity_pool_dict(direct_entity_pool_dict, public_adjacent_pool, public_adjacent_weights)
+    update_entity_pool_dict(direct_entity_pool_dict, strong_adjacent_pool, strong_adjacent_weights)
+
+    sorted_pool = sorted(direct_entity_pool_dict.items(), key=lambda x: x[1], reverse=True)
+    sorted_key = [k for k, _ in sorted_pool]
+    return sorted_key[:cfg.model.direct_entity_num]
+
+
+def build_indirect_entity_pool(cfg, public_adjacent_pool, public_adjacent_weights, indirect_entity_pool, indirect_entity_weights, indirect_non_entity_pool, indirect_non_entity_weights):
+    indirect_entity_pool_dict = {}
+    update_entity_pool_dict(indirect_entity_pool_dict, public_adjacent_pool, public_adjacent_weights)
+    update_entity_pool_dict(indirect_entity_pool_dict, indirect_entity_pool, indirect_entity_weights)
+    update_entity_pool_dict(indirect_entity_pool_dict, indirect_non_entity_pool, indirect_non_entity_weights)
+
+    sorted_pool = sorted(indirect_entity_pool_dict.items(), key=lambda x: x[1], reverse=True)
+    sorted_key = [k for k, _ in sorted_pool]
+    return sorted_key[:cfg.model.indirect_entity_num]
+
+def build_direct_and_indirect_entity_pool(cfg, mode='train'):
+    print(f"[{mode}] Start to process direct and indirect entity pool")
+
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+
+    direct_entity_pool_path = Path(data_dir[mode]) / f"direct_entity_pool.bin"
+    indirect_entity_pool_path = Path(data_dir[mode]) / f"indirect_entity_pool.bin"
+    # direct_entity_pool_path = Path(data_dir[mode]) / f"direct_entity_pool.json"
+    # indirect_entity_pool_path = Path(data_dir[mode]) / f"indirect_entity_pool.json"
+
+    # hetero_graph_adjacent_pool_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_pool.json"
+    # hetero_graph_adjacent_weights_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_weights.json"
+
+    hetero_graph_adjacent_pool_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_pool.bin"
+    hetero_graph_adjacent_weights_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_weights.bin"
+    reprocess_flag = False
+    for file_path in [direct_entity_pool_path, indirect_entity_pool_path]:
+        if file_path.exists() is False:
+            reprocess_flag = True
+
+    if (reprocess_flag == False) and (cfg.reprocess == False) and (cfg.reprocess_neighbors == False):
+        # print(f"[{mode}] Hetero Graph Neighbor dict exist !")
+        return
+
+    hetero_graph_adjacent_pool = json.load(open(hetero_graph_adjacent_pool_path, 'rb'))
+    hetero_graph_adjacent_weights = json.load(open(hetero_graph_adjacent_weights_path, 'rb'))
+
+    # direct_entity_pool = {}
+    # indirect_entity_pool = {}
+    direct_entity_pool = [0]
+    indirect_entity_pool = [0]
+
+    # print(f"hetero_graph_adjacent_pool: {hetero_graph_adjacent_pool}")
+    for cur_news_index in range(1, len(hetero_graph_adjacent_pool)):
+        cur_news_index = f"{cur_news_index}"
+        strong_adjacent_pool = hetero_graph_adjacent_pool[cur_news_index]['strong_adjacent_pool']
+        strong_adjacent_weights = hetero_graph_adjacent_weights[cur_news_index]['strong_adjacent_weights']
+        public_adjacent_pool = hetero_graph_adjacent_pool[cur_news_index]['public_adjacent_pool']
+        public_adjacent_weights = hetero_graph_adjacent_weights[cur_news_index]['public_adjacent_weights']
+        indirect_entity_adjacent_pool = hetero_graph_adjacent_pool[cur_news_index]['indirect_entity_adjacent_pool']
+        indirect_entity_adjacent_weights = hetero_graph_adjacent_weights[cur_news_index][
+            'indirect_entity_adjacent_weights']
+        indirect_non_entity_adjacent_pool = hetero_graph_adjacent_pool[cur_news_index][
+            'indirect_non_entity_adjacent_pool']
+        indirect_non_entity_adjacent_weight = hetero_graph_adjacent_weights[cur_news_index][
+            'indirect_non_entity_adjacent_weights']
+
+        cur_direct_entity_pool = build_direct_entity_pool(cfg, public_adjacent_pool, public_adjacent_weights,
+                                                           strong_adjacent_pool, strong_adjacent_weights)
+        cur_indirect_entity_pool = build_indirect_entity_pool(cfg, public_adjacent_pool, public_adjacent_weights,
+                                                               indirect_entity_adjacent_pool,
+                                                               indirect_entity_adjacent_weights,
+                                                               indirect_non_entity_adjacent_pool,
+                                                               indirect_non_entity_adjacent_weight)
+        # direct_entity_pool[cur_news_index] = cur_direct_entity_pool
+        # indirect_entity_pool[cur_news_index)] = cur_indirect_entity_pool
+        direct_entity_pool.append(cur_direct_entity_pool)
+        indirect_entity_pool.append(cur_indirect_entity_pool)
+    # with open(direct_entity_pool_path, 'w', encoding='utf-8') as f:
+    #     json.dump(direct_entity_pool, f, ensure_ascii=False, indent=4)
+    # with open(indirect_entity_pool_path, 'w', encoding='utf-8') as f:
+    #     json.dump(indirect_entity_pool, f, ensure_ascii=False, indent=4)
+    pickle.dump(direct_entity_pool, open(direct_entity_pool_path, 'wb'))
+    pickle.dump(indirect_entity_pool, open(indirect_entity_pool_path, 'wb'))
+
+
+
+
+
 def prepare_entity_graph(cfg, mode='train'):
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
 
@@ -1068,14 +1279,13 @@ def prepare_entity_graph(cfg, mode='train'):
 
         target_news_graph_path = Path(data_dir[mode]) / "nltk_news_graph.pt"
         news_graph = torch.load(target_news_graph_path)
-        print("news_graph,", news_graph)
-        print(f'news_graph.x.shape: {news_graph.x.shape}')
+        # print("news_graph,", news_graph)
+
         # entity_indices：每个新闻中包含的实体的索引
         # TODO 多了5维abs_entity
         entity_indices = news_graph.x[:, -13:-8].numpy()
         # entity_indices = news_graph.x[:, -8:-3].numpy()
-        print("entity_indices, ", entity_indices.shape)
-        # TODO what is entity_indices
+        # print("entity_indices, ", entity_indices.shape)
 
         entity_edge_index = []
         # -------- Inter-news -----------------
@@ -1198,6 +1408,788 @@ def prepare_abs_entity_graph(cfg, mode='train'):
         #     multi_user_entity_edge_index.extend(edges)
 
 
+def prepare_hetero_graph(cfg, mode='train'):
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+    target_path = Path(data_dir[mode]) / "hetero_graph.pt"
+    reprocess_flag = False
+    if target_path.exists() is False:
+        reprocess_flag = True
+    if (reprocess_flag == False) and (cfg.reprocess == False):
+        print(f"[{mode}] Hetero graph exists!")
+        return
+    news_set = set()
+    # hetero_graph = HeteroData()
+
+    node_types = ['trigger', 'argument', 'topic', 'subtopic', 'entity']
+    edge_weights = collections.defaultdict(int)
+    hetero_graph_basic_dict = {}
+    news_dict = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
+    node_dict = json.load(open(Path(data_dir[mode]) / "node_dict.json"))
+    with open(Path(data_dir[mode]) / "hetero_graph_basic.json", "rb") as f:
+        for line in f:
+            data = json.loads(line.strip())
+            news_id = data['news_id']
+            if news_id in news_set:
+                continue
+            else:
+                news_set.add(news_id)
+                hetero_graph_basic_dict[news_id] = {}
+            topic = data['topic']
+            subtopic = data['subtopic']
+            _argument = data['argument'][1:-1].split(",")
+            _trigger = data['trigger'][1:-1].split(",")
+            _entity = data['entity'][1:-1].split(",")
+
+            topic_id = node_dict['topic'][topic]
+            subtopic_id = node_dict['subtopic'][subtopic]
+            argument, trigger, entity = [], [], []
+            argument_ids, trigger_ids, entity_ids = [], [], []
+
+            for __trigger in _trigger:
+                __trigger = __trigger.strip()[1:-1].strip("").lower()
+                if __trigger != "":
+                    trigger.append(__trigger)
+                    trigger_ids.append(node_dict['trigger'][__trigger])
+
+            for __argument in _argument:
+                __argument = __argument.strip()[1:-1].strip("").lower()
+                if __argument != "":
+                    argument.append(__argument)
+                    argument_ids.append(node_dict['argument'][__argument])
+
+            for __entity in _entity:
+                __entity = __entity.strip()[1:-1].strip("")
+                if __entity != "":
+                    entity.append(__entity)
+                    entity_ids.append(node_dict['entity'][__entity])
+
+            # print(f"{news_id}: topic: {topic}({topic_id}), subtopic: {subtopic}({subtopic_id})")
+            # print(f"{news_id}: argument: {argument}, trigger: {trigger}, entity: {entity}")
+            # print(f"{news_id}: argument_id: {argument_ids}, trigger_ids: {trigger_ids}, entity_ids: {entity_ids}")
+            hetero_graph_basic_dict[news_id]["topic"] = topic_id
+            hetero_graph_basic_dict[news_id]["subtopic"] = subtopic_id
+            hetero_graph_basic_dict[news_id]["argument"] = argument_ids
+            hetero_graph_basic_dict[news_id]["trigger"] = trigger_ids
+            hetero_graph_basic_dict[news_id]["entity"] = entity_ids
+            # print(f"{news_id}: {hetero_graph_basic_dict[news_id]}")
+    with open(Path(data_dir[mode]) / "hetero_basic_info", "w", encoding="utf-8") as f:
+        json.dump(hetero_graph_basic_dict, f, ensure_ascii=False, indent=4)
+
+
+    origin_graph_path = Path(data_dir['train']) / "hetero_graph.pt"
+    behavior_path = Path(data_dir['train']) / "behaviors.tsv"
+
+    # ----------------------- Build Hetero Graph ---------------------------
+    if mode == 'train':
+        edge_list, user_set = [], set()
+        num_line = len(open(behavior_path, encoding='utf-8').readlines())
+        with open(behavior_path, 'r', encoding='utf-8') as f:
+            for line in tqdm(f, total=num_line, desc=f"[{mode}] Processing behaviors to Hetero Graph"):
+                line = line.strip().split('\t')
+
+                user_id = line[1]
+                if user_id in user_set:
+                    continue
+                else:
+                    user_set.add(user_id)
+
+                history = line[3].split()
+                if len(history) > 1:
+                    long_edge = [news_id for news_id in history]
+                    edge_list.append(long_edge)
+
+        short_edges = []
+        for edge in tqdm(edge_list, total=len(edge_list), desc=f'Processing hetero graph edge list'):
+            for i in range(len(edge)-1):
+                short_edges.append((edge[i], edge[i+1]))
+        news_edge_weights = Counter(short_edges)
+        # print(f"edge_weights: {edge_weights}")
+        unique_edges = list(news_edge_weights.keys())
+        # print(f"unique_edges: {unique_edges}")
+        news_edge_index = list(zip(*unique_edges))
+        # print(f"news_edge_index: {news_edge_index}")
+        news_edge_attr = [news_edge_weights[edge] for edge in unique_edges]
+        # print(f"news_edge_attr: {news_edge_attr}")
+        # print(f"len(news_edge_index): {len(news_edge_index[0])}") # 632044
+        # print(f"len(news_edge_attr): {len(news_edge_attr)}")
+
+        entity_topic_edges = []
+        entity_subtopic_edges = []
+        entity_trigger_edges = []
+        entity_argument_edges = []
+        entity_entity_edges = []
+        topic_entity_edges = []
+        subtopic_entity_edges = []
+        trigger_entity_edges = []
+        argument_entity_edges = []
+
+        for i in range(len(news_edge_attr)):
+            src_news = news_edge_index[0][i]
+            dst_news = news_edge_index[1][i]
+            weight = news_edge_attr[i]
+            src_news_info = hetero_graph_basic_dict[src_news]
+            dst_news_info = hetero_graph_basic_dict[dst_news]
+            src_topic, src_subtopic, src_arguments, src_triggers, src_entities = (src_news_info[key] for key in ["topic", "subtopic", "argument", "trigger", "entity"])
+            dst_topic, dst_subtopic, dst_arguments, dst_triggers, dst_entities = (dst_news_info[key] for key in ["topic", "subtopic", "argument", "trigger", "entity"])
+
+            for src_entity in src_entities:
+                for times in range(weight):
+                    # src_entities -> dst_topic
+                    entity_topic_edges.append((src_entity, dst_topic))
+                    # topic_entity_edges.append((dst_topic, src_entity))
+                    # src_entities -> dst_subtopic
+                    entity_subtopic_edges.append((src_entity, dst_subtopic))
+                    # subtopic_entity_edges.append((dst_subtopic, src_entity))
+                    # src_entities -> dst_triggers
+                    for dst_trigger in dst_triggers:
+                        entity_trigger_edges.append((src_entity, dst_trigger))
+                    # src_entities -> dst_arguments
+                    for dst_argument in dst_arguments:
+                        entity_argument_edges.append((src_entity, dst_argument))
+                    # src_entities <-> dst_entities
+                    for dst_entity in dst_entities:
+                        entity_entity_edges.append((src_entity, dst_entity))
+
+            for dst_entity in dst_entities:
+                for times in range(weight):
+                    # src_topic -> dst_entities
+                    topic_entity_edges.append((src_topic, dst_entity))
+                    # entity_topic_edges.append((dst_entity, src_topic))
+                    # src_subtopic -> dst_entities
+                    subtopic_entity_edges.append((src_subtopic, dst_entity))
+                    # entity_subtopic_edges.append((dst_entity, src_subtopic))
+                    # src_triggers -> dst_entities
+                    for src_trigger in src_triggers:
+                        trigger_entity_edges.append((src_trigger, dst_entity))
+                    # src_arguments -> dst_entities
+                    for src_argument in src_arguments:
+                        argument_entity_edges.append((src_argument, dst_entity))
+        # print(f"entity_topic_edges: {entity_topic_edges}")
+        entity_topic_weights = Counter(entity_topic_edges)
+        entity_subtopic_weights = Counter(entity_subtopic_edges)
+        entity_trigger_weights = Counter(entity_trigger_edges)
+        entity_argument_weights = Counter(entity_argument_edges)
+        entity_entity_weights = Counter(entity_entity_edges)
+        topic_entity_weights = Counter(topic_entity_edges)
+        subtopic_entity_weights = Counter(subtopic_entity_edges)
+        trigger_entity_weights = Counter(trigger_entity_edges)
+        argument_entity_weights = Counter(argument_entity_edges)
+
+        unique_entity_topic_edges = list(entity_topic_weights.keys())
+        # print(f"unique_entity_topic_edges: {unique_entity_topic_edges}")
+        unique_entity_subtopic_edges = list(entity_subtopic_weights.keys())
+        unique_entity_trigger_edges = list(entity_trigger_weights.keys())
+        unique_entity_argument_edges = list(entity_argument_weights.keys())
+        unique_entity_entity_edges = list(entity_entity_weights.keys())
+        unique_topic_entity_edges = list(topic_entity_weights.keys())
+        unique_subtopic_entity_edges = list(subtopic_entity_weights.keys())
+        unique_trigger_entity_edges = list(trigger_entity_weights.keys())
+        unique_argument_entity_edges = list(argument_entity_weights.keys())
+
+        entity_topic_edge_index = list(zip(*unique_entity_topic_edges))
+        entity_subtopic_edge_index = list(zip(*unique_entity_subtopic_edges))
+        entity_trigger_edge_index = list(zip(*unique_entity_trigger_edges))
+        entity_argument_edge_index = list(zip(*unique_entity_argument_edges))
+        entity_entity_edge_index = list(zip(*unique_entity_entity_edges))
+        topic_entity_edge_index = list(zip(*unique_topic_entity_edges))
+        subtopic_entity_edge_index = list(zip(*unique_subtopic_entity_edges))
+        trigger_entity_edge_index = list(zip(*unique_trigger_entity_edges))
+        argument_entity_edge_index = list(zip(*unique_argument_entity_edges))
+
+        entity_topic_edge_attr = [entity_topic_weights[edge] for edge in unique_entity_topic_edges]
+        entity_subtopic_edge_attr = [entity_subtopic_weights[edge] for edge in unique_entity_subtopic_edges]
+        entity_trigger_edge_attr = [entity_trigger_weights[edge] for edge in unique_entity_trigger_edges]
+        entity_argument_edge_attr = [entity_argument_weights[edge] for edge in unique_entity_argument_edges]
+        entity_entity_edge_attr = [entity_entity_weights[edge] for edge in unique_entity_entity_edges]
+        topic_entity_edge_attr = [topic_entity_weights[edge] for edge in unique_topic_entity_edges]
+        subtopic_entity_edge_attr = [subtopic_entity_weights[edge] for edge in unique_subtopic_entity_edges]
+        trigger_entity_edge_attr = [trigger_entity_weights[edge] for edge in unique_trigger_entity_edges]
+        argument_entity_edge_attr = [argument_entity_weights[edge] for edge in unique_argument_entity_edges]
+
+        data = HeteroData()
+        # print(f"data['topic']: {data['topic']}")
+        data['topic'].x = torch.arange(len(node_dict['topic']) + 2)
+        data['subtopic'].x = torch.arange(len(node_dict['subtopic']) + 2)
+        data['trigger'].x = torch.arange(len(node_dict['trigger']) + 2)
+        data['argument'].x = torch.arange(len(node_dict['argument']) + 2)
+        data['entity'].x = torch.arange(len(node_dict['entity']) + 2)
+
+        data['entity', 'to', 'topic'].edge_index = torch.tensor(entity_topic_edge_index, dtype=torch.long)
+        data['entity', 'to', 'subtopic'].edge_index = torch.tensor(entity_subtopic_edge_index, dtype=torch.long)
+        data['entity', 'to', 'trigger'].edge_index = torch.tensor(entity_trigger_edge_index, dtype=torch.long)
+        data['entity', 'to', 'argument'].edge_index = torch.tensor(entity_argument_edge_index, dtype=torch.long)
+        data['entity', 'to', 'entity'].edge_index = torch.tensor(entity_entity_edge_index, dtype=torch.long)
+        data['topic', 'to', 'entity'].edge_index = torch.tensor(topic_entity_edge_index, dtype=torch.long)
+        data['subtopic', 'to', 'entity'].edge_index = torch.tensor(subtopic_entity_edge_index, dtype=torch.long)
+        data['trigger', 'to', 'entity'].edge_index = torch.tensor(trigger_entity_edge_index, dtype=torch.long)
+        data['argument', 'to', 'entity'].edge_index = torch.tensor(argument_entity_edge_index, dtype=torch.long)
+
+        data['entity', 'to', 'topic'].edge_attr = torch.tensor(entity_topic_edge_attr, dtype=torch.long)
+        data['entity', 'to', 'subtopic'].edge_attr = torch.tensor(entity_subtopic_edge_attr, dtype=torch.long)
+        data['entity', 'to', 'trigger'].edge_attr = torch.tensor(entity_trigger_edge_attr, dtype=torch.long)
+        data['entity', 'to', 'argument'].edge_attr = torch.tensor(entity_argument_edge_attr, dtype=torch.long)
+        data['entity', 'to', 'entity'].edge_attr = torch.tensor(entity_entity_edge_attr, dtype=torch.long)
+        data['topic', 'to', 'entity'].edge_attr = torch.tensor(topic_entity_edge_attr, dtype=torch.long)
+        data['subtopic', 'to', 'entity'].edge_attr = torch.tensor(subtopic_entity_edge_attr, dtype=torch.long)
+        data['trigger', 'to', 'entity'].edge_attr = torch.tensor(trigger_entity_edge_attr, dtype=torch.long)
+        data['argument', 'to', 'entity'].edge_attr = torch.tensor(argument_entity_edge_attr, dtype=torch.long)
+
+        torch.save(data, target_path)
+        print(f"[{mode}] Finish Hetero Graph Construction, \nHetero Graph Path: {target_path} \nGraph Info: {data}")
+
+
+
+
+
+
+
+        # for i in range(len(news_edge_attr)):
+        #     src_news = news_edge_index[0][i]
+        #     dst_news = news_edge_index[1][i]
+        #     # print(f"src: {src_news}, dst: {dst_news}")
+        #     weight = news_edge_attr[i]
+        #     src_news_info = hetero_graph_basic_dict[src_news]
+        #     dst_news_info = hetero_graph_basic_dict[dst_news]
+        #     # print(f"src_news_info: {hetero_graph_basic_dict[src_news]}")
+        #     src_topic, src_subtopic, src_arguments, src_triggers, src_entities = (src_news_info[key] for key in ["topic", "subtopic", "argument", "trigger", "entity"])
+        #     dst_topic, dst_subtopic, dst_arguments, dst_triggers, dst_entities = (dst_news_info[key] for key in ["topic", "subtopic", "argument", "trigger", "entity"])
+        #     # print(f"src: {src_topic}, {src_subtopic}, {src_arguments}, {src_triggers}, {src_entities}")
+        #     # print(f"dst: {dst_topic}, {dst_subtopic}, {dst_arguments}, {dst_triggers}, {dst_entities}")
+        #
+        #
+        #     # topic -> topic
+        #     # add_hetero_graph_edge(edge_weights, src_topic, 'topic', dst_topic, 'topic', 'topic_to_topic', weight)
+        #
+        #     # subtopic -> subtopic
+        #     # add_hetero_graph_edge(edge_weights, src_subtopic, 'subtopic', dst_subtopic, 'subtopic', 'subtopic_to_subtopic', weight)
+        #
+        #     # argument <-> argument
+        #     # for src_argument in src_arguments:
+        #     #     for dst_argument in dst_arguments:
+        #     #         add_hetero_graph_edge(edge_weights, src_argument, 'argument', dst_argument, 'argument', 'argument_to_argument', weight)
+        #     #         add_hetero_graph_edge(edge_weights, dst_argument, 'argument', src_argument, 'argument', 'argument_to_argument', weight)
+        #
+        #     # src_topic -> dst_entities、 src_subtopic -> dst_entities
+        #     for dst_entity in dst_entities:
+        #         add_hetero_graph_edge(edge_weights, src_topic, 'topic', dst_entity, 'entity', 'topic_to_entity', weight)
+        #         add_hetero_graph_edge(edge_weights, src_subtopic, 'subtopic', dst_entity, 'entity', 'subtopic_to_entity', weight)
+        #
+        #
+        #     # src_topic -> dst_arguments、 src_subtopic -> dst_arguments
+        #     # for dst_argument in dst_arguments:
+        #     #     add_hetero_graph_edge(edge_weights, src_topic, 'topic', dst_argument, 'argument', 'topic_to_argument', weight)
+        #     #     add_hetero_graph_edge(edge_weights, src_subtopic, 'subtopic', dst_argument, 'argument', 'subtopic_to_argument', weight)
+        #
+        #     # src_trigger -> dst_entities、 src_trigger -> dst_arguments
+        #     for src_trigger in src_triggers:
+        #         for dst_entity in dst_entities:
+        #             add_hetero_graph_edge(edge_weights, src_trigger, 'trigger', dst_entity, 'entity', 'trigger_to_entity', weight)
+        #         # for dst_argument in dst_arguments:
+        #         #     add_hetero_graph_edge(edge_weights, src_trigger, 'trigger', dst_argument, 'argument', 'trigger_to_argument', weight)
+        #     # src_argument -> dst_entities
+        #     for src_argument in src_arguments:
+        #         for dst_entity in dst_entities:
+        #             add_hetero_graph_edge(edge_weights, src_argument, 'argument', dst_entity, 'entity', 'argument_to_entity', weight)
+        #
+        #     for src_entity in src_entities:
+        #         # src_entities <-> dst_entities
+        #         for dst_entity in dst_entities:
+        #             add_hetero_graph_edge(edge_weights, src_entity, 'entity', dst_entity, 'entity', 'entity_to_entity', weight)
+        #             # add_hetero_graph_edge(edge_weights, dst_entity, 'entity', src_entity, 'entity', 'entity_to_entity', weight)
+        #
+        #         # src_entities -> dst_topic
+        #         add_hetero_graph_edge(edge_weights, src_entity, 'entity', dst_topic, 'topic', 'entity_to_topic', weight)
+        #         # src_entities -> dst_subtopic
+        #         add_hetero_graph_edge(edge_weights, src_entity, 'entity', dst_subtopic, 'subtopic', 'entity_to_subtopic', weight)
+        #         # src_entities -> dst_triggers
+        #         for dst_trigger in dst_triggers:
+        #             add_hetero_graph_edge(edge_weights, src_entity, 'entity', dst_trigger, 'trigger', 'entity_to_trigger', weight)
+        #         # src_entities -> dst_arguments
+        #         for dst_argument in dst_arguments:
+        #             add_hetero_graph_edge(edge_weights, src_entity, 'entity', dst_argument, 'argument', 'entity_to_argument', weight)
+        #
+        # update_hetero_graph_with_edges(hetero_graph, edge_weights)
+        # torch.save(hetero_graph, target_path)
+        # # print(hetero_graph)
+        # print(f"[{mode}] Finish Hetero Graph Construction, \nHetero Graph Path: {target_path} \nGraph Info: {hetero_graph}")
+
+    elif mode in ['test', 'val']:
+        origin_graph = torch.load(origin_graph_path)
+        data = HeteroData()
+        # print(f"data['topic']: {data['topic']}")
+        data['topic'].x = origin_graph['topic']
+        data['subtopic'].x = origin_graph['subtopic']
+        data['trigger'].x = origin_graph['trigger']
+        data['argument'].x = origin_graph['argument']
+        data['entity'].x = origin_graph['entity']
+
+        data['entity', 'to', 'topic'].edge_index = origin_graph['entity', 'to', 'topic'].edge_index
+        data['entity', 'to', 'subtopic'].edge_index = origin_graph['entity', 'to', 'subtopic'].edge_index
+        data['entity', 'to', 'trigger'].edge_index = origin_graph['entity', 'to', 'trigger'].edge_index
+        data['entity', 'to', 'argument'].edge_index = origin_graph['entity', 'to', 'argument'].edge_index
+        data['entity', 'to', 'entity'].edge_index = origin_graph['entity', 'to', 'entity'].edge_index
+        data['topic', 'to', 'entity'].edge_index = origin_graph['topic', 'to', 'entity'].edge_index
+        data['subtopic', 'to', 'entity'].edge_index = origin_graph['subtopic', 'to', 'entity'].edge_index
+        data['trigger', 'to', 'entity'].edge_index = origin_graph['trigger', 'to', 'entity'].edge_index
+        data['argument', 'to', 'entity'].edge_index = origin_graph['argument', 'to', 'entity'].edge_index
+
+        data['entity', 'to', 'topic'].edge_attr = origin_graph['entity', 'to', 'topic'].edge_attr
+        data['entity', 'to', 'subtopic'].edge_attr = origin_graph['entity', 'to', 'subtopic'].edge_attr
+        data['entity', 'to', 'trigger'].edge_attr = origin_graph['entity', 'to', 'trigger'].edge_attr
+        data['entity', 'to', 'argument'].edge_attr = origin_graph['entity', 'to', 'argument'].edge_attr
+        data['entity', 'to', 'entity'].edge_attr = origin_graph['entity', 'to', 'entity'].edge_attr
+        data['topic', 'to', 'entity'].edge_attr = origin_graph['topic', 'to', 'entity'].edge_attr
+        data['subtopic', 'to', 'entity'].edge_attr = origin_graph['subtopic', 'to', 'entity'].edge_attr
+        data['trigger', 'to', 'entity'].edge_attr = origin_graph['trigger', 'to', 'entity'].edge_attr
+        data['argument', 'to', 'entity'].edge_attr = origin_graph['argument', 'to', 'entity'].edge_attr
+
+        torch.save(data, target_path)
+        print(f"[{mode}] Finish Hetero Graph Construction, \nHetero Graph Path: {target_path} \nGraph Info: {data}")
+
+
+
+
+
+def add_hetero_graph_edge(edge_weights, src, src_type, dst, dst_type, relation, weight=1):
+    """
+    添加边或更新边权重。
+    """
+    key = (src_type, relation, dst_type, src, dst)
+    edge_weights[key] += weight
+    # print(f"Add edge {src_type}_{dst_type}: {src}_{dst}, add weight = {weight}, now weight = {edge_weights[key]}")
+
+
+def update_hetero_graph_with_edges(graph, edge_weights):
+    """
+    将边及其权重添加到异构图中。
+    """
+    # print(f"len: {len(edge_weights.items())}")
+    for (src_type, relation, dst_type, src, dst), weight in edge_weights.items():
+        if 'edge_index' not in graph[(src_type, dst_type)]:
+            graph[(src_type, dst_type)]['edge_index'] = torch.tensor([], dtype=torch.long).reshape(2, 0)
+            graph[(src_type, dst_type)]['edge_weight'] = torch.tensor([], dtype=torch.int)
+
+        edge_index = graph[(src_type, dst_type)]['edge_index']
+        edge_weight = graph[(src_type, dst_type)]['edge_weight']
+        # print(f"edge_index: {edge_index}")
+        # 更新边和权重
+        graph[(src_type, dst_type)]['edge_index'] = torch.cat(
+            [edge_index, torch.tensor([[src], [dst]], dtype=torch.long)], dim=1
+        )
+        graph[(src_type, dst_type)]['edge_weight'] = torch.cat(
+            [edge_weight, torch.tensor([weight], dtype=torch.int)]
+        )
+    # print(f"edge_weight.items(): {edge_weights.items()}")
+    # print(f"len: {len(edge_weights.items())}")
+
+    # for (src_type, relation, dst_type, src, dst), weight in edge_weights.items():
+
+    #     if f'{relation}_edge_index' not in graph[(src_type, dst_type)]:
+    #         graph[(src_type, dst_type)][f'{relation}_edge_index'] = torch.tensor([], dtype=torch.long).reshape(2, 0)
+    #         graph[(src_type, dst_type)][f'{relation}_edge_weight'] = torch.tensor([], dtype=torch.int)
+    #
+    #     edge_index = graph[(src_type, dst_type)][f'{relation}_edge_index']
+    #     edge_weight = graph[(src_type, dst_type)][f'{relation}_edge_weight']
+    #
+    #     # 更新边和权重
+    #     graph[(src_type, dst_type)][f'{relation}_edge_index'] = torch.cat(
+    #         [edge_index, torch.tensor([[src], [dst]], dtype=torch.long)], dim=1
+    #     )
+    #     graph[(src_type, dst_type)][f'{relation}_edge_weight'] = torch.cat(
+    #         [edge_weight, torch.tensor([weight], dtype=torch.int)]
+    #     )
+
+
+def extend_entity_neighbors_pool(cfg, mode):
+    """
+        扩展当前candidate_news的异构图邻居
+    """
+    print(f"[{mode}] Start to process hetero graph adjacent pool")
+
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+
+    hetero_neighbor_dict_path = Path(data_dir[mode]) / f"hetero_neighbor_dict.bin"
+    hetero_weights_dict_path = Path(data_dir[mode]) / f"hetero_weights_dict.bin"
+    hetero_graph_news_input_path = Path(data_dir[mode]) / f"hetero_graph_news_input.bin"
+
+    hetero_graph_adjacent_pool_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_pool.bin"
+    hetero_graph_adjacent_weights_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_weights.bin"
+
+    # hetero_graph_adjacent_pool_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_pool.json"
+    # hetero_graph_adjacent_weights_path = Path(data_dir[mode]) / f"hetero_graph_adjacent_weights.json"
+
+    reprocess_flag = False
+    for file_path in [hetero_neighbor_dict_path, hetero_weights_dict_path]:
+        if file_path.exists() is False:
+            reprocess_flag = True
+
+    if (reprocess_flag == False) and (cfg.reprocess == False) and (cfg.reprocess_neighbors == False):
+        print(f"[{mode}] Hetero Graph Neighbor dict exist !")
+        return
+
+    hetero_neighbors = pickle.load(open(hetero_neighbor_dict_path, 'rb'))
+    hetero_neighbors_weights = pickle.load(open(hetero_weights_dict_path, 'rb'))
+    hetero_graph_news_input = pickle.load(open(hetero_graph_news_input_path, 'rb'))
+
+
+    # topic_id = hetero_graph_news_input[:, 0]
+    # subtopic_id = hetero_graph_news_input[:, 1]
+    # trigger_ids = hetero_graph_news_input[:, 2:5]
+    # argument_ids = hetero_graph_news_input[:, 5:10]
+    # entity_ids = hetero_graph_news_input[:, -5:]
+
+    # adjacent_pool_types = {'strong_adjacent_pool', 'public_adjacent_pool', 'indirect_adjacent_pool'}
+    # adjacent_poll_weights_types = {'strong_adjacent_weights', 'public_adjacent_weights', 'indirect_adjacent_weights'}
+    hetero_graph_adjacent_pool = {}
+    hetero_graph_adjacent_weights = {}
+
+    for news_index, hetero_input in enumerate(hetero_graph_news_input):
+        topic_id = hetero_input[0]
+        subtopic_id = hetero_input[1]
+        trigger_ids = hetero_input[2:5]
+        argument_ids = hetero_input[5:10]
+        entity_ids = hetero_input[-5:]
+
+        strong_adjacent_pool, strong_adjacent_weights = build_strong_adjacent_pool(cfg, entity_ids, hetero_neighbors,
+                                                                                   hetero_neighbors_weights)
+        public_adjacent_pool, public_adjacent_weights = build_public_adjacent_pool(cfg, topic_id, subtopic_id,
+                                                                                   trigger_ids, argument_ids,
+                                                                                   hetero_neighbors,
+                                                                                   hetero_neighbors_weights)
+        indirect_entity_adjacent_pool, indirect_entity_adjacent_weights, indirect_non_entity_adjacent_pool, indirect_non_entity_adjacent_weights = build_indirect_adjacent_poll(cfg, entity_ids, strong_adjacent_pool, strong_adjacent_weights, hetero_neighbors, hetero_neighbors_weights)
+
+        if news_index in hetero_graph_adjacent_pool:
+            continue
+        else:
+            hetero_graph_adjacent_pool[news_index] = {}
+            hetero_graph_adjacent_weights[news_index] = {}
+
+        hetero_graph_adjacent_pool[news_index]['strong_adjacent_pool'] = strong_adjacent_pool
+        hetero_graph_adjacent_pool[news_index]['public_adjacent_pool'] = public_adjacent_pool
+        hetero_graph_adjacent_pool[news_index]['indirect_entity_adjacent_pool'] = indirect_entity_adjacent_pool
+        hetero_graph_adjacent_pool[news_index]['indirect_non_entity_adjacent_pool'] = indirect_non_entity_adjacent_pool
+        hetero_graph_adjacent_weights[news_index]['strong_adjacent_weights'] = strong_adjacent_weights
+        hetero_graph_adjacent_weights[news_index]['public_adjacent_weights'] = public_adjacent_weights
+        hetero_graph_adjacent_weights[news_index]['indirect_entity_adjacent_weights'] = indirect_entity_adjacent_weights
+        hetero_graph_adjacent_weights[news_index]['indirect_non_entity_adjacent_weights'] = indirect_non_entity_adjacent_weights
+
+
+    with open(hetero_graph_adjacent_pool_path, 'w', encoding='utf-8') as f:
+        json.dump(hetero_graph_adjacent_pool, f, ensure_ascii=False, indent=4)
+    with open(hetero_graph_adjacent_weights_path, 'w', encoding='utf-8') as f:
+        json.dump(hetero_graph_adjacent_weights, f, ensure_ascii=False, indent=4)
+    # pickle.dump(hetero_graph_adjacent_pool, open(hetero_graph_adjacent_pool_path, 'wb'))
+    # pickle.dump(hetero_graph_adjacent_weights, open(hetero_graph_adjacent_weights_path, 'wb'))
+
+
+
+def build_strong_adjacent_pool(cfg, entity_ids, hetero_neighbors, hetero_neighbors_weights):
+    """
+        从每个entity_id开始扩展entity邻居
+        strong_adjacent_pool: []
+        strong_adjacent_poll_weight: []
+
+        return:
+        strong_adjacent_pool: [entity_id's neighbors for entity_id in entity_ids]
+        strong_adjacent_weights: [entity_id's neighbor's weight for entity_id in entity_ids]
+    """
+    strong_adjacent_pool = []
+    strong_adjacent_weights = []
+    entity_neighbors = hetero_neighbors['entity_entity']
+    entity_neighbors_weights = hetero_neighbors_weights['entity_entity']
+    # print(f"entity_neighbors: {entity_neighbors}")
+
+    # 终点是entity_id的所有起始节点
+    for entity_id in entity_ids:
+        if entity_id == 0:
+            continue
+        cur_entity_neighbors = []
+        cur_entity_neighbors_weights = []
+        entity_neighbor = entity_neighbors[entity_id][:cfg.model.strong_entity_adjacent_num]
+        entity_neighbor_weight = entity_neighbors_weights[entity_id][:cfg.model.strong_entity_adjacent_num]
+        # entity_neighbor = entity_neighbors[entity_id][:]
+        # entity_neighbor_weight = entity_neighbors_weights[entity_id][:]
+        cur_entity_neighbors.extend(entity_neighbor)
+        cur_entity_neighbors_weights.extend(entity_neighbor_weight)
+        # if len(cur_entity_neighbors) < cfg.model.strong_entity_adjacent_num:
+        #     for i in range(cfg.model.strong_entity_adjacent_num - len(cur_entity_neighbors)):
+        #         cur_entity_neighbors.append(entity_id)
+        #         cur_entity_neighbors_weights.append(1)
+        strong_adjacent_pool.extend(cur_entity_neighbors)
+        strong_adjacent_weights.extend(cur_entity_neighbors_weights)
+        # print(f"entity_id: {entity_id}: \n strong_adjacent_pool: {cur_entity_neighbors} \nstrong_adjacent_weights: {cur_entity_neighbors_weights}")
+
+    strong_adjacent_pool, strong_adjacent_weights = duplicate_elem_combined(strong_adjacent_pool, strong_adjacent_weights)
+    return strong_adjacent_pool, strong_adjacent_weights
+
+
+
+def build_public_adjacent_pool(cfg, topic_id, subtopic_id, trigger_ids, argument_ids, hetero_neighbors, hetero_neighbors_weights):
+    """
+        从topic_id、subtopic_id、和每个trigger_id和每个argument_id向外扩展entity邻居
+        从每个项中各取三个entity邻居
+
+    """
+    public_adjacent_pool = []
+    public_adjacent_weights = []
+
+    topic_entity_neighbors = hetero_neighbors['topic_entity']
+    topic_entity_neighbors_weights = hetero_neighbors_weights['topic_entity']
+    subtopic_entity_neighbors = hetero_neighbors['subtopic_entity']
+    subtopic_entity_neighbors_weights = hetero_neighbors_weights['subtopic_entity']
+    trigger_entity_neighbors = hetero_neighbors['trigger_entity']
+    trigger_entity_neighbors_weights = hetero_neighbors_weights['trigger_entity']
+    argument_entity_neighbors = hetero_neighbors['argument_entity']
+    argument_entity_neighbors_weights = hetero_neighbors_weights['argument_entity']
+
+
+    cur_topic_entity_neighbors = topic_entity_neighbors[topic_id][:cfg.model.public_entity_adjacent_num]
+    cur_topic_entity_neighbors_weights = topic_entity_neighbors_weights[topic_id][:cfg.model.public_entity_adjacent_num]
+    # cur_topic_entity_neighbors = topic_entity_neighbors[topic_id][:]
+    # cur_topic_entity_neighbors_weights = topic_entity_neighbors_weights[topic_id][:]
+    # if len(cur_topic_entity_neighbors) < cfg.model.public_entity_adjacent_num:
+    #     for i in range(cfg.model.public_entity_adjacent_num - len(cur_topic_entity_neighbors)):
+    #         cur_topic_entity_neighbors.append(0)
+    #         cur_topic_entity_neighbors_weights.append(1)
+    cur_subtopic_entity_neighbors = subtopic_entity_neighbors[subtopic_id][:cfg.model.public_entity_adjacent_num]
+    cur_subtopic_entity_neighbors_weights = subtopic_entity_neighbors_weights[subtopic_id][:cfg.model.public_entity_adjacent_num]
+    # cur_subtopic_entity_neighbors = subtopic_entity_neighbors[subtopic_id][:]
+    # cur_subtopic_entity_neighbors_weights = subtopic_entity_neighbors_weights[subtopic_id][:]
+    # if len(cur_subtopic_entity_neighbors) < cfg.model.public_entity_adjacent_num:
+    #     for i in range(cfg.model.public_entity_adjacent_num - len(cur_subtopic_entity_neighbors)):
+    #         cur_subtopic_entity_neighbors.append(0)
+    #         cur_subtopic_entity_neighbors_weights.append(1)
+    cur_trigger_entity_neighbors = []
+    cur_trigger_entity_neighbors_weights = []
+    cur_argument_entity_neighbors = []
+    cur_argument_entity_neighbors_weights = []
+
+    for trigger_id in trigger_ids:
+        if trigger_id == 0:
+            continue
+        # print(f"trigger_entity_neighbors[trigger_id][:cfg.model.public_entity_adjacent_num]: {trigger_entity_neighbors[trigger_id][:cfg.model.public_entity_adjacent_num]}")
+        for i, entity_id in enumerate(trigger_entity_neighbors[trigger_id][:cfg.model.public_entity_adjacent_num]):
+        # for i, entity_id in enumerate(trigger_entity_neighbors[trigger_id][:]):
+            # cur_trigger_entity_neighbors.extend(trigger_entity_neighbors[trigger_id][:cfg.model.public_entity_adjacent_num])
+            # cur_trigger_entity_neighbors_weights.extend(trigger_entity_neighbors_weights[trigger_id][:cfg.model.public_entity_adjacent_num])
+            cur_trigger_entity_neighbors.append(entity_id)
+            cur_trigger_entity_neighbors_weights.append(trigger_entity_neighbors_weights[trigger_id][:cfg.model.public_entity_adjacent_num][i])
+            # cur_trigger_entity_neighbors_weights.append(trigger_entity_neighbors_weights[trigger_id][:][i])
+    # if len(cur_trigger_entity_neighbors) < len(trigger_ids) * cfg.model.public_entity_adjacent_num:
+    #     for i in range(len(trigger_ids) * cfg.model.public_entity_adjacent_num - len(cur_trigger_entity_neighbors)):
+    #         cur_trigger_entity_neighbors.append(0)
+    #         cur_trigger_entity_neighbors_weights.append(1)
+
+
+    for argument_id in argument_ids:
+        if argument_id == 0:
+            continue
+        # cur_argument_entity_neighbors.append(argument_entity_neighbors[argument_id][:cfg.model.public_entity_adjacent_num])
+        # cur_argument_entity_neighbors_weights.append(argument_entity_neighbors_weights[argument_id][:cfg.model.public_entity_adjacent_num])
+        for i, entity_id in enumerate(argument_entity_neighbors[argument_id][:cfg.model.public_entity_adjacent_num]):
+        # for i, entity_id in enumerate(argument_entity_neighbors[argument_id][:]):
+            cur_argument_entity_neighbors.append(entity_id)
+            cur_argument_entity_neighbors_weights.append(argument_entity_neighbors_weights[argument_id][:cfg.model.public_entity_adjacent_num][i])
+            # cur_argument_entity_neighbors_weights.append(argument_entity_neighbors_weights[argument_id][:][i])
+    # if len(cur_argument_entity_neighbors) < len(argument_ids) * cfg.model.public_entity_adjacent_num:
+    #     for i in range(len(argument_ids) * cfg.model.public_entity_adjacent_num - len(cur_argument_entity_neighbors)):
+    #         cur_argument_entity_neighbors.append(0)
+    #         cur_argument_entity_neighbors_weights.append(1)
+
+    for neighbor in (cur_topic_entity_neighbors, cur_subtopic_entity_neighbors, cur_trigger_entity_neighbors, cur_argument_entity_neighbors):
+        public_adjacent_pool.extend(neighbor)
+
+    for weight in (cur_topic_entity_neighbors_weights, cur_subtopic_entity_neighbors_weights, cur_trigger_entity_neighbors_weights, cur_argument_entity_neighbors_weights):
+        public_adjacent_weights.extend(weight)
+
+    public_adjacent_pool, public_adjacent_weights = duplicate_elem_combined(public_adjacent_pool, public_adjacent_weights)
+    # print(f"public_adjacent_pool: {public_adjacent_pool}")
+    # print(f"public_adjacent_weights: {public_adjacent_weights}")
+    return public_adjacent_pool, public_adjacent_weights
+
+
+
+
+def build_indirect_adjacent_poll(cfg, entity_ids, strong_adjacent_poll, strong_adjacent_weights, hetero_neighbors, hetero_neighbors_weights):
+    """
+        1. 从strong_adjacent_poll中的entity_ids继续向外扩展entity邻居
+        2. 先从每个entity_id开始向外延展topic_id、subtopic_id、trigger_ids、argument_ids，
+           再向外扩展entity邻居
+    """
+
+    entity_entity_neighbors = hetero_neighbors['entity_entity']
+    entity_topic_neighbors = hetero_neighbors['entity_topic']
+    entity_subtopic_neighbors = hetero_neighbors['entity_subtopic']
+    entity_trigger_neighbors = hetero_neighbors['entity_trigger']
+    entity_argument_neighbors = hetero_neighbors['entity_argument']
+    topic_entity_neighbors = hetero_neighbors['topic_entity']
+    subtopic_entity_neighbors = hetero_neighbors['subtopic_entity']
+    trigger_entity_neighbors = hetero_neighbors['trigger_entity']
+    argument_entity_neighbors = hetero_neighbors['argument_entity']
+
+    entity_entity_weights = hetero_neighbors_weights['entity_entity']
+    entity_topic_weights = hetero_neighbors_weights['entity_topic']
+    entity_subtopic_weights = hetero_neighbors_weights['entity_subtopic']
+    entity_trigger_weights = hetero_neighbors_weights['entity_trigger']
+    entity_argument_weights = hetero_neighbors_weights['entity_argument']
+    topic_entity_weights = hetero_neighbors_weights['topic_entity']
+    subtopic_entity_weights = hetero_neighbors_weights['subtopic_entity']
+    trigger_entity_weights = hetero_neighbors_weights['trigger_entity']
+    argument_entity_weights = hetero_neighbors_weights['argument_entity']
+
+    indirect_entity_neighbors = []
+    # indirect_topic_entity_neighbors = []
+    # indirect_subtopic_entity_neighbors = []
+    # indirect_trigger_entity_neighbors = []
+    # indirect_argument_entity_neighbors = []
+    indirect_non_entity_neighbors = []
+
+    indirect_entity_weights = []
+    # indirect_topic_entity_weights = []
+    # indirect_subtopic_entity_weights = []
+    # indirect_trigger_entity_weights = []
+    # indirect_argument_weights = []
+    indirect_non_entity_weights = []
+
+    # def check_and_fill(neighbors, weights, target_len, neighbor_fill_elem, weight_fill_elem):
+    #     if len(neighbors) < target_len:
+    #         for i in range(target_len - len(neighbors)):
+    #             neighbors.append(neighbor_fill_elem)
+    #             weights.append(weight_fill_elem)
+    #
+    #     return neighbors, weights
+
+
+    # 1. 从strong_adjacent_poll中的entity向外扩展邻居（entity二阶邻居)
+    # print(f"strong_adjacent_poll: {strong_adjacent_poll}")
+    # print(f"strong_adjacent_weight: {strong_adjacent_weights}")
+    for i, direct_entity_id in enumerate(strong_adjacent_poll):
+        # direct_entity_ids: entity_ids[i]的一阶entity邻居
+        cur_weight = strong_adjacent_weights[i]
+        # for direct_entity_id in direct_entity_ids:
+        if direct_entity_id == 0:
+            continue
+        cur_neighbors = entity_entity_neighbors[direct_entity_id][:cfg.model.second_order_entity_neighbors_num]
+        cur_weights = entity_entity_weights[direct_entity_id][:cfg.model.second_order_entity_neighbors_num]
+        # cur_neighbors = entity_entity_neighbors[direct_entity_id][:]
+        # cur_weights = entity_entity_weights[direct_entity_id][:]
+        for weight in cur_weights:
+            weight += cur_weight
+        # cur_neighbors, cur_weights = check_and_fill(cur_neighbors, cur_weights, cfg.model.indirect_adjacent_entity_num, direct_entity_id, 1)
+        indirect_entity_neighbors.extend(cur_neighbors)
+        indirect_entity_weights.extend(cur_weights)
+
+
+    # 2. 从每个entity扩展到其他其中结点类型的邻居结点，再从这些邻居结点出发扩展entity邻居
+    for entity_id in entity_ids:
+        if entity_id == 0:
+            continue
+        # entity->topic的一阶邻居
+        entity_topic_first_order_neighbors = entity_topic_neighbors[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        entity_topic_first_order_weights = entity_topic_weights[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        # entity_topic_first_order_neighbors = entity_topic_neighbors[entity_id][:]
+        # entity_topic_first_order_weights = entity_topic_weights[entity_id][:]
+        # entity_topic_first_order_neighbors, entity_topic_first_order_weights = check_and_fill(entity_topic_first_order_neighbors, entity_topic_first_order_weights, cfg.model.indirect_adjacent_non_entity_num, 0, 1)
+        # topic->entity
+        for i, topic_id in enumerate(entity_topic_first_order_neighbors):
+            if topic_id == 0:
+                continue
+            weight = entity_topic_first_order_weights[i]
+            entity_topic_entity_second_order_neighbors = topic_entity_neighbors[topic_id][:cfg.model.indirect_adjacent_entity_num]
+            entity_topic_entity_second_order_weights = topic_entity_weights[topic_id][:cfg.model.indirect_adjacent_entity_num]
+            # entity_topic_entity_second_order_neighbors = topic_entity_neighbors[topic_id][:]
+            # entity_topic_entity_second_order_weights = topic_entity_weights[topic_id][:]
+            for topic_entity_weight in entity_topic_entity_second_order_weights:
+                topic_entity_weight += weight
+            # entity_topic_entity_second_order_neighbors, entity_topic_entity_second_order_weights = check_and_fill(entity_topic_entity_second_order_neighbors, entity_topic_entity_second_order_weights, cfg.model.indirect_adjacent_entity_num, entity_id, 1)
+            indirect_non_entity_neighbors.extend(entity_topic_entity_second_order_neighbors)
+            indirect_non_entity_weights.extend(entity_topic_entity_second_order_weights)
+
+
+        # entity->subtopic的一阶邻居
+        entity_subtopic_first_order_neighbors = entity_subtopic_neighbors[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        entity_subtopic_first_order_weights = entity_subtopic_weights[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        # entity_subtopic_first_order_neighbors = entity_subtopic_neighbors[entity_id][:]
+        # entity_subtopic_first_order_weights = entity_subtopic_weights[entity_id][:]
+        # entity_subtopic_first_order_neighbors, entity_subtopic_first_order_weights = check_and_fill(entity_subtopic_first_order_neighbors, entity_subtopic_first_order_weights, cfg.model.indirect_adjacent_non_entity_num, 0, 1)
+
+        # subtopic->entity
+        for i, subtopic_id in enumerate(entity_subtopic_first_order_neighbors):
+            if subtopic_id == 0:
+                continue
+            weight = entity_subtopic_first_order_weights[i]
+            entity_subtopic_entity_second_order_neighbors = subtopic_entity_neighbors[subtopic_id][:cfg.model.indirect_adjacent_entity_num]
+            entity_subtopic_entity_second_order_weights = subtopic_entity_weights[subtopic_id][:cfg.model.indirect_adjacent_entity_num]
+            # entity_subtopic_entity_second_order_neighbors = subtopic_entity_neighbors[subtopic_id][:]
+            # entity_subtopic_entity_second_order_weights = subtopic_entity_weights[subtopic_id][:]
+            for subtopic_entity_weight in entity_subtopic_entity_second_order_weights:
+                subtopic_entity_weight += weight
+            # entity_subtopic_entity_second_order_neighbors, entity_subtopic_entity_second_order_weights = check_and_fill(entity_subtopic_entity_second_order_neighbors, entity_subtopic_entity_second_order_weights, cfg.model.indirect_adjacent_entity_num, entity_id, 1)
+            indirect_non_entity_neighbors.extend(entity_subtopic_entity_second_order_neighbors)
+            indirect_non_entity_weights.extend(entity_subtopic_entity_second_order_weights)
+
+        # entity->trigger的一阶邻居
+        entity_trigger_first_order_neighbors = entity_trigger_neighbors[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        entity_trigger_first_order_weights = entity_trigger_weights[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        # entity_trigger_first_order_neighbors = entity_trigger_neighbors[entity_id][:]
+        # entity_trigger_first_order_weights = entity_trigger_weights[entity_id][:]
+        # entity_trigger_first_order_neighbors, entity_trigger_first_order_weights = check_and_fill(entity_trigger_first_order_neighbors, entity_trigger_first_order_weights, cfg.model.indirect_adjacent_non_entity_num, 0, 1)
+
+        # trigger->entity
+        for i, trigger_id in enumerate(entity_trigger_first_order_neighbors):
+            if trigger_id == 0:
+                continue
+            weight = entity_trigger_first_order_weights[i]
+            entity_trigger_entity_second_order_neighbors = trigger_entity_neighbors[trigger_id][:cfg.model.indirect_adjacent_entity_num]
+            entity_trigger_entity_second_order_weights = trigger_entity_weights[trigger_id][:cfg.model.indirect_adjacent_entity_num]
+            # entity_trigger_entity_second_order_neighbors = trigger_entity_neighbors[trigger_id][:]
+            # entity_trigger_entity_second_order_weights = trigger_entity_weights[trigger_id][:]
+            for trigger_entity_weight in entity_trigger_entity_second_order_weights:
+                trigger_entity_weight += weight
+            indirect_non_entity_neighbors.extend(entity_trigger_entity_second_order_neighbors)
+            indirect_non_entity_weights.extend(entity_trigger_entity_second_order_weights)
+
+
+        # entity->argument的一阶邻居
+        entity_argument_first_order_neighbors = entity_argument_neighbors[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        entity_argument_first_order_weights = entity_argument_weights[entity_id][:cfg.model.indirect_adjacent_non_entity_num]
+        # entity_argument_first_order_neighbors = entity_argument_neighbors[entity_id][:]
+        # entity_argument_first_order_weights = entity_argument_weights[entity_id][:]
+        # argument->entity
+        for i, argument_id in enumerate(entity_argument_first_order_neighbors):
+            if argument_id == 0:
+                continue
+            weight = entity_argument_first_order_weights[i]
+            entity_argument_entity_second_order_neighbors = argument_entity_neighbors[argument_id][:cfg.model.indirect_adjacent_entity_num]
+            entity_argument_entity_second_order_weights = argument_entity_weights[argument_id][:cfg.model.indirect_adjacent_entity_num]
+            # entity_argument_entity_second_order_neighbors = argument_entity_neighbors[argument_id][:]
+            # entity_argument_entity_second_order_weights = argument_entity_weights[argument_id][:]
+            for argument_entity_weight in entity_argument_entity_second_order_weights:
+                argument_entity_weight += weight
+            indirect_non_entity_neighbors.extend(entity_argument_entity_second_order_neighbors)
+            indirect_non_entity_weights.extend(entity_argument_entity_second_order_weights)
+
+    # print(f"indirect_entity_neighbors: {indirect_entity_neighbors}")
+    # print(f"indirect_entity_weights: {indirect_entity_weights}")
+    indirect_entity_neighbors, indirect_entity_weights = duplicate_elem_combined(indirect_entity_neighbors, indirect_entity_weights)
+    indirect_non_entity_neighbors, indirect_non_entity_weights = duplicate_elem_combined(indirect_non_entity_neighbors, indirect_non_entity_weights)
+    return indirect_entity_neighbors, indirect_entity_weights, indirect_non_entity_neighbors, indirect_non_entity_weights
+
+
+def duplicate_elem_combined(neighbors, weights):
+    unique_dict = {}
+    for node, weight in zip(neighbors, weights):
+        if node in unique_dict:
+            unique_dict[node] += weight
+        else:
+            unique_dict[node] = weight
+
+    new_neighbors = list(unique_dict.keys())
+    new_weights = list(unique_dict.values())
+
+    return new_neighbors, new_weights
+
+
 def prepare_subcategory_graph(cfg, mode='train'):
     print("Building subcategory graph...")
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
@@ -1225,7 +2217,7 @@ def prepare_subcategory_graph(cfg, mode='train'):
         for i in range(news_edge_src.shape[0]):
             src_subcategory = subcategory_indices[news_edge_src[i]]
             dest_subcategory = subcategory_indices[news_edge_dest[i]]
-            # TODO 不需要过滤无效subcategory索引？
+
             src_subcategory_mask = src_subcategory > 0
             dest_subcategory_mask = dest_subcategory > 0
             src_subcategory = src_subcategory[src_subcategory_mask]
@@ -1238,7 +2230,7 @@ def prepare_subcategory_graph(cfg, mode='train'):
         edge_index = torch.tensor(list(zip(*unique_edges)), dtype=torch.long)
         edge_attr = torch.tensor([edge_weights[edge] for edge in unique_edges], dtype=torch.long)
 
-        # TODO 是否无向图
+
         # edge_index, edge_attr = to_undirected(edge_index, edge_attr)
 
         data = Data(x=torch.arange(len(subcategory_dict) + 1),
@@ -1296,6 +2288,17 @@ def prepare_preprocessed_data(cfg):
     # prepare_event_graph(cfg, 'train')
     # prepare_event_graph(cfg, 'val')
     # prepare_event_graph(cfg, 'test')
+    prepare_hetero_graph(cfg, "train")
+    prepare_hetero_graph(cfg, "val")
+
+    prepare_hetero_neighbor_list(cfg, "train")
+    prepare_hetero_neighbor_list(cfg, 'val')
+
+    extend_entity_neighbors_pool(cfg, 'train')
+    extend_entity_neighbors_pool(cfg, 'val')
+
+    build_direct_and_indirect_entity_pool(cfg, 'train')
+    build_direct_and_indirect_entity_pool(cfg, 'val')
 
     prepare_neighbor_list(cfg, 'train', 'news')
     prepare_neighbor_list(cfg, 'val', 'news')
@@ -1309,7 +2312,7 @@ def prepare_preprocessed_data(cfg):
     prepare_neighbor_list(cfg, 'val', 'entity')
     # prepare_neighbor_list(cfg, 'test', 'entity')
 
-    # TODO 新增START
+
     # prepare_neighbor_list(cfg, 'train', 'event')
     # prepare_neighbor_list(cfg, 'val', 'event')
     # prepare_neighbor_list(cfg, 'test', 'event')
@@ -1330,7 +2333,7 @@ def prepare_preprocessed_data(cfg):
     # prepare_neighbor_list(cfg, 'val', 'subcategory')
     # prepare_neighbor_list(cfg, 'test', 'subcategory')
 
-    # TODO 新增END
+
 
 
     # # Entity vec process

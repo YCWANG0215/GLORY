@@ -62,6 +62,23 @@ model:
   news_per_subtopic: 5
   word_emb_dim: 300
   use_hetero_graph: true
+  hetero_k_hops: 5
+  strong_entity_adjacent_num: 10
+  public_entity_adjacent_num: 3
+  indirect_adjacent_entity_num: 5
+  indirect_adjacent_non_entity_num: 3
+  direct_pool_total_entity_num: 10
+  indirect_pool_total_entity_num: 10
+  second_order_entity_neighbors_num: 10
+  topic_neighbors_num: 5
+  subtopic_neighbors_num: 5
+  trigger_neighbors_num: 3
+  argument_neighbors_num: 5
+  direct_entity_num: 10
+  indirect_entity_num: 10
+
+
+
 
 
 logger:

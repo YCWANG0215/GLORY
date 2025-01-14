@@ -28,6 +28,7 @@ def load_model(cfg):
 
     if cfg.model.use_entity:
         entity_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "entity_dict.bin", "rb"))
+        print(f"entity_dict length: {len(entity_dict)}")
         entity_emb_path = Path(cfg.dataset.val_dir) / "combined_entity_embedding.vec"
         entity_emb = load_pretrain_emb(entity_emb_path, entity_dict, 100)
     else:
@@ -73,7 +74,8 @@ def save_model(cfg, model, optimizer=None, mark=None):
 
 
 def load_pretrain_emb(embedding_file_path, target_dict, target_dim):
-    embedding_matrix = np.zeros(shape=(len(target_dict) + 1, target_dim))
+    print(f"target_dict length: {len(target_dict)}")
+    embedding_matrix = np.zeros(shape=(len(target_dict) + 2, target_dim))
     have_item = []
     if embedding_file_path is not None:
         with open(embedding_file_path, 'rb') as f:

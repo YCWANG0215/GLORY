@@ -124,13 +124,21 @@ class CandidateEncoder(nn.Module):
         #         nn.Linear(self.news_dim, self.output_dim),
         #         nn.LeakyReLU(0.2),
         #     ])
+        # self.atte = Sequential('a,b,c,d,e', [
+        #         (lambda a,b,c,d,e: torch.stack([a,b,c,d,e], dim=-2).view(-1, 5, self.news_dim),
+        #          'a,b,c,d,e -> x'),
+        #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        #         nn.Linear(self.news_dim, self.output_dim),
+        #         nn.LeakyReLU(0.2),
+        #     ])
+
         self.atte = Sequential('a,b,c,d', [
-                (lambda a,b,c,d: torch.stack([a,b,c,d], dim=-2).view(-1, 4, self.news_dim),
-                 'a,b,c,d -> x'),
-                AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
-                nn.Linear(self.news_dim, self.output_dim),
-                nn.LeakyReLU(0.2),
-            ])
+            (lambda a, b, c, d: torch.stack([a, b, c, d], dim=-2).view(-1, 4, self.news_dim),
+             'a,b,c,d -> x'),
+            AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+            nn.Linear(self.news_dim, self.output_dim),
+            nn.LeakyReLU(0.2),
+        ])
 
 
 
@@ -144,8 +152,13 @@ class CandidateEncoder(nn.Module):
         # print(f"neighbor_emb shape: {neighbor_emb.shape}")
         # print(f"cand_event_emb shape: {cand_event_emb.shape}")
         # print(f"cand_key_entity_emb shape: {cand_key_entity_emb.shape}")
+        # print(f"indirect_entity_neighbors_emb.shape: {indirect_entity_neighbors_emb.shape}")
+
+        # result = (self.atte(candidate_emb, origin_emb, neighbor_emb,
+        #                    cand_event_emb, indirect_entity_neighbors_emb)
+        #           .view(batch_size, num_news, self.output_dim))
         result = (self.atte(candidate_emb, origin_emb, neighbor_emb,
-                           cand_event_emb)
+                            cand_event_emb)
                   .view(batch_size, num_news, self.output_dim))
         # print(f"result shape: {result.shape}")
         return result

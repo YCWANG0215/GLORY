@@ -55,7 +55,7 @@ class GLORY(nn.Module):
         # News Encoder
         self.local_news_encoder = NewsEncoder(cfg, glove_emb)
 
-        # TODO Event Encoder
+
         self.event_encoder = EventEncoder(cfg, glove_emb)
         self.event_attention_encoder = EventAttentionEncoder(cfg)
         self.event_total_encoder = EventTotalEncoder(cfg)
@@ -98,7 +98,7 @@ class GLORY(nn.Module):
                  'x, mask -> x'),
             ])
 
-            # # TODO -------- 新增Start
+
             # self.entity_encoder = EntityEncoder(cfg, entity_emb)
             # self.news_encoder = Sequential('x, mask', [
             #     (nn.Dropout(p=cfg.dropout_probability), 'x -> x'),
@@ -108,7 +108,7 @@ class GLORY(nn.Module):
             #     # nn.Linear(self.news_dim, self.news_dim),
             #     # nn.LeakyReLU(0.2),
             # ])
-            # # TODO -------- 新增End
+
 
         # if self.use_abs_entity:
         #     abs_pretrain = torch.from_numpy(abs_entity_emb).float()
@@ -124,7 +124,7 @@ class GLORY(nn.Module):
         #         (GlobalEntityEncoder(cfg), 'x, mask -> x'),
         #     ])
 
-        self.key_entity_attention = KeyEntityAttention(cfg)
+        # self.key_entity_attention = KeyEntityAttention(cfg)
         # if self.use_key_entity:
         #     key_pretrain = torch.from_numpy(entity_emb).float()
         #     self.key_entity_embedding_layer = nn.Embedding.from_pretrained(key_pretrain, freeze=False, padding_idx=0)
@@ -167,7 +167,13 @@ class GLORY(nn.Module):
         self.click_predictor = DotProduct()
         self.loss_fn = NCELoss()
 
-    def forward(self, subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, label=None, clicked_event=None, candidate_event=None, clicked_topic_list=None, clicked_topic_mask_list=None, clicked_subtopic_list=None, clicked_subtopic_mask_list=None, clicked_subtopic_news_list=None, clicked_subtopic_news_mask_list=None, clicked_event_mask=None, hetero_graph=None):
+        self.fc = nn.Sequential(
+            nn.Linear(800, 400),
+            nn.ReLU(),
+        )
+
+
+    def forward(self, subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, label=None, clicked_event=None, candidate_event=None, clicked_topic_list=None, clicked_topic_mask_list=None, clicked_subtopic_list=None, clicked_subtopic_mask_list=None, clicked_subtopic_news_list=None, clicked_subtopic_news_mask_list=None, clicked_event_mask=None, indirect_entity_neighbors=None, indirect_entity_neighbors_mask=None):
         # -------------------------------------- clicked ----------------------------------
         mask = mapping_idx != -1
         mapping_idx[mapping_idx == -1] = 0
@@ -288,10 +294,10 @@ class GLORY(nn.Module):
                             clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
 
 
-        # TODO clicked_total_embedding
+
         # clicked_total_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
         # clicked_key_entity_final_emb = self.key_entity_attention(clicked_key_entity_emb, clicked_key_entity_padding_news_mask)
-        # TODO 要带mapping_idx吗
+
         # print(f"clicked_origin_emb.shape: {clicked_origin_emb.shape}")
         # print(f"mask.shape: {mask.shape}")
         # print(f"clicked_graph.shape: {clicked_graph_emb.shape}")
@@ -341,6 +347,16 @@ class GLORY(nn.Module):
             # cand_entity_emb = self.entity_encoder(candidate_entity, entity_mask).view(batch_size, -1, self.news_dim) # [8, 5, 400]
         else:
             cand_origin_entity_emb, cand_neighbor_entity_emb = None, None
+
+        if self.cfg.model.use_hetero_graph:
+            # print(f"indirect_entity_neighbors.shape: {indirect_entity_neighbors.shape}") # [32, 5, 10]
+            # print(f"indirect_entity_neighbors_mask.shape: {indirect_entity_neighbors_mask.shape}") # [32, 5, 10]
+            indirect_entity_neighbors_emb = self.global_entity_encoder(indirect_entity_neighbors, indirect_entity_neighbors_mask)
+        else:
+            indirect_entity_neighbors_emb = None
+
+        # indirect_entity_neighbors_emb = None
+
         # print("FINISH LINE 163")
         # if self.use_abs_entity:
         #     abs_origin_entity, abs_neighbor_entity = candidate_abs_entity.split(
@@ -381,19 +397,24 @@ class GLORY(nn.Module):
         # else:
         #     cand_key_entity_emb = None
 
-        # print("FINISH LINE 182")
-        cand_final_emb = self.candidate_encoder(cand_title_emb, cand_origin_entity_emb, cand_neighbor_entity_emb,
+        combined_entity_emb = self.fc(torch.cat([cand_neighbor_entity_emb, indirect_entity_neighbors_emb], dim=-1))
+        # cand_final_emb = self.candidate_encoder(cand_title_emb, cand_origin_entity_emb, cand_neighbor_entity_emb,
+        #                                         cand_event_emb, indirect_entity_neighbors_emb)
+        cand_final_emb = self.candidate_encoder(cand_title_emb, cand_origin_entity_emb, combined_entity_emb,
                                                 cand_event_emb)
+        # print(1)
         # cand_final_emb = self.atte(cand_final_emb, None)
         # print(f"cand_final_emb.shape: {cand_final_emb.shape}")
         # print(f"user_emb.shape: {user_emb.shape}")
         # ----------------------------------------- Score ------------------------------------
         score = self.click_predictor(cand_final_emb, user_emb)
+        # print(2)
         loss = self.loss_fn(score, label)
-        # print(14)
+        # print(3)
+
         return loss, score
 
-    def validation_process(self, subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_event, candidate_event, clicked_topic_list=None, clicked_topic_mask_list=None, clicked_subtopic_list=None, clicked_subtopic_mask_list=None, clicked_subtopic_news_list=None, clicked_subtopic_news_mask_list=None, clicked_event_mask=None, hetero_graph=None):
+    def validation_process(self, subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask, clicked_event, candidate_event, clicked_topic_list=None, clicked_topic_mask_list=None, clicked_subtopic_list=None, clicked_subtopic_mask_list=None, clicked_subtopic_news_list=None, clicked_subtopic_news_mask_list=None, clicked_event_mask=None, indirect_entity_neighbors=None, indirect_entity_neighbors_mask=None):
         
         batch_size, num_news, news_dim = 1, len(mappings), candidate_emb.shape[-1]
 
@@ -530,6 +551,13 @@ class GLORY(nn.Module):
             cand_origin_entity_emb = None
             cand_neighbor_entity_emb = None
 
+        if self.cfg.model.use_hetero_graph:
+            indirect_entity_neighbors = indirect_entity_neighbors.unsqueeze(0)
+            indirect_entity_neighbors_mask = indirect_entity_neighbors_mask.unsqueeze(0)
+            indirect_entity_neighbors_emb = self.global_entity_encoder(indirect_entity_neighbors, indirect_entity_neighbors_mask)
+        else:
+            indirect_entity_neighbors_emb = None
+
         # if self.use_abs_entity:
         #     cand_abs_entity_input = candidate_abs_entity.unsqueeze(0)
         #     abs_entity_mask = cand_abs_entity_mask.unsqueeze(0)
@@ -565,9 +593,17 @@ class GLORY(nn.Module):
         # else:
         #     cand_key_entity_emb = None
 
+        # cand_final_emb = self.candidate_encoder(cand_title_emb, cand_origin_entity_emb, cand_neighbor_entity_emb,
+        #                                         cand_event_emb, indirect_entity_neighbors_emb)
+
         cand_event_emb = candidate_event.unsqueeze(0)
 
-        cand_final_emb = self.candidate_encoder(candidate_emb.unsqueeze(0), cand_origin_entity_emb, cand_neighbor_entity_emb,
+        combined_entity_emb = self.fc(torch.cat([cand_neighbor_entity_emb, indirect_entity_neighbors_emb], dim=-1))
+
+        # cand_final_emb = self.candidate_encoder(candidate_emb.unsqueeze(0), cand_origin_entity_emb, cand_neighbor_entity_emb,
+        #                                         cand_event_emb, indirect_entity_neighbors_emb)
+        cand_final_emb = self.candidate_encoder(candidate_emb.unsqueeze(0), cand_origin_entity_emb,
+                                                combined_entity_emb,
                                                 cand_event_emb)
         # ---------------------------------------------------------------------------------------
         # ----------------------------------------- Score ------------------------------------
