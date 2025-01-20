@@ -54,13 +54,15 @@ class EventEncoder(nn.Module):
         self.event_type_encoder = Sequential('x', [
             (nn.Embedding(cfg.model.subcategory_size+20, self.event_type_dim), 'x->x'),
             (nn.Linear(self.event_type_dim, 300), 'x->x'),
-            (nn.LeakyReLU(0.2), 'x->x')
+            # (nn.LeakyReLU(0.2), 'x->x')
+            (nn.ReLU(), 'x->x')
         ])
 
         self.subcategory_encoder = Sequential('x', [
             (nn.Embedding(cfg.model.subcategory_size + 2, self.event_type_dim), 'x->x'),
             (nn.Linear(self.event_type_dim, 300), 'x->x'),
-            (nn.LeakyReLU(0.2), 'x->x')
+            # (nn.LeakyReLU(0.2), 'x->x')
+            (nn.ReLU(), 'x->x')
         ])
 
         self.event_transfer_encoder = EventTransferEncoder()
@@ -130,7 +132,6 @@ class EventEncoder(nn.Module):
         # print(f"triggers_mask = {triggers_mask}")
         # triggers = triggers[~(triggers == 0).all(1)]
 
-        # TODO
         triggers_mask = triggers == 0
         triggers_emb = self.attention(self.word_encoder(triggers.long().view(-1, 3)), triggers_mask.view(-1, 3)).view(batch_size, num_news, 300)
 
@@ -142,7 +143,6 @@ class EventEncoder(nn.Module):
         # triggers_total_emb = self.attention(triggers_emb, None)
         # print(f"triggers_total_emb = {triggers_total_emb}")
 
-        # TODO
         event_type_emb = self.event_type_encoder(event_type).squeeze(-2)
 
 
@@ -158,12 +158,13 @@ class EventEncoder(nn.Module):
         # print(f"subcategory_emb shape: {subcategory_emb.shape}")
 
         event_emb = torch.cat((event_type_emb, entity_emb, triggers_emb, subcategory_emb), dim=-1)
+        # print(f"event_emb.shape: {event_emb.shape}")
         # event_emb = subcategory_emb
         # print("event emb finish.")
         # print(f"event_emb shape: {event_emb.shape}")
         # print(f"event_emb: {event_emb}")
         result = self.event_transfer_encoder(event_emb)
-        # print(f"result shape: {result.shape}") [1, 32, 400]
+        # print(f"result shape: {result.shape}") # [32, 50, 400]
         return result
 
 
@@ -226,7 +227,8 @@ class EventTotalEncoder(nn.Module):
         self.cfg = cfg
         self.fc1 = nn.Linear(800, 600)
         self.fc2 = nn.Linear(600, 400)
-        self.relu = nn.LeakyReLU(0.2)
+        # self.relu = nn.LeakyReLU(0.2)
+        self.relu = nn.ReLU()
 
     def forward(self, event_encoder_input, event_attention_input):
         # batch_size, num_news= event_encoder_input.shape

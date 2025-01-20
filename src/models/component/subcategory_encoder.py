@@ -12,7 +12,8 @@ class SubcategoryEncoder(nn.Module):
         self.news_emb_dim = 400
         self.embedding = nn.Embedding(subcategory_size+5, self.subcategory_emb_dim)
         self.fc = nn.Linear(self.subcategory_emb_dim, self.news_emb_dim)
-        self.relu = nn.LeakyReLU(0.2)
+        # self.relu = nn.LeakyReLU(0.2)
+        self.relu = nn.ReLU()
         # print(f"subcategory_size: {subcategory_size}")
 
     def forward(self, subcategory_input):

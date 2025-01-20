@@ -61,7 +61,8 @@ class HieEncoder(nn.Module):
                               cfg.model.attention_hidden_dim), 'x,mask -> x'),
             nn.LayerNorm(self.news_dim),
             nn.Linear(self.news_dim, self.news_dim),
-            nn.LeakyReLU(0.2),
+            # nn.LeakyReLU(0.2),
+            nn.ReLU(),
         ])
 
     def forward(self, clicked_topic_list, clicked_topic_mask_list,

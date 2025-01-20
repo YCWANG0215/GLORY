@@ -154,11 +154,11 @@ class CandidateEncoder(nn.Module):
         # print(f"cand_key_entity_emb shape: {cand_key_entity_emb.shape}")
         # print(f"indirect_entity_neighbors_emb.shape: {indirect_entity_neighbors_emb.shape}")
 
-        # result = (self.atte(candidate_emb, origin_emb, neighbor_emb,
-        #                    cand_event_emb, indirect_entity_neighbors_emb)
-        #           .view(batch_size, num_news, self.output_dim))
         result = (self.atte(candidate_emb, origin_emb, neighbor_emb,
-                            cand_event_emb)
+                           cand_event_emb)
                   .view(batch_size, num_news, self.output_dim))
+        # result = (self.atte(candidate_emb, origin_emb, neighbor_emb,
+        #                     cand_event_emb)
+        #           .view(batch_size, num_news, self.output_dim))
         # print(f"result shape: {result.shape}")
         return result

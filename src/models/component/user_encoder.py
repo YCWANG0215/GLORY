@@ -34,7 +34,8 @@ class UserTotalEncoder(nn.Module):
         # self.fc1 = nn.Linear(1200, 600)
         self.fc1 = nn.Linear(1200, 600)
         self.fc2 = nn.Linear(600, 400)
-        self.relu = nn.LeakyReLU(0.2)
+        # self.relu = nn.LeakyReLU(0.2)
+        self.relu = nn.ReLU()
         self.news_dim = 400
         # self.atte = Sequential('a,b,c', [
         #     (lambda a, b, c: torch.stack([a, b, c], dim=1).view(-1, 3, self.news_dim), 'a,b,c -> x'),
@@ -44,6 +45,7 @@ class UserTotalEncoder(nn.Module):
 
     def forward(self, user_common_emb, user_event_emb, hie_emb):
         user_emb = torch.cat((user_common_emb, user_event_emb, hie_emb), dim=-1)
+        # user_emb = torch.cat((user_common_emb, user_event_emb), dim=-1)
         # print(f"user_emb.shape: {user_emb.shape}") # [32, 1200]
 
         # print(f"user_emb.shape: {user_emb.shape}")

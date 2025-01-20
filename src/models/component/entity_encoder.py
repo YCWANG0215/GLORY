@@ -23,7 +23,8 @@ class EntityEncoder(nn.Module):
             (AttentionPooling(self.entity_dim, cfg.model.attention_hidden_dim), 'x, mask-> x'),
             nn.LayerNorm(self.entity_dim),
             nn.Linear(self.entity_dim, self.news_dim),
-            nn.LeakyReLU(0.2),
+            # nn.LeakyReLU(0.2),
+            nn.ReLU()
         ])
 
 

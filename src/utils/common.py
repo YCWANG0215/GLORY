@@ -1,6 +1,7 @@
 """
 Common utils and tools.
 """
+import json
 import pickle
 import random
 
@@ -28,9 +29,12 @@ def load_model(cfg):
 
     if cfg.model.use_entity:
         entity_dict = pickle.load(open(Path(cfg.dataset.val_dir) / "entity_dict.bin", "rb"))
-        print(f"entity_dict length: {len(entity_dict)}")
+        data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+        node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
+        # print(f"entity_dict length: {len(entity_dict)}")
         entity_emb_path = Path(cfg.dataset.val_dir) / "combined_entity_embedding.vec"
-        entity_emb = load_pretrain_emb(entity_emb_path, entity_dict, 100)
+        # entity_emb = load_pretrain_emb(entity_emb_path, entity_dict, 100)
+        entity_emb = load_pretrain_emb(entity_emb_path, node_dict['entity'], 100)
     else:
         entity_emb = None
     

@@ -145,8 +145,7 @@ def read_raw_news(cfg, file_path, mode='train'):
     # nltk.download('punkt')
     
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
-    node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
-    node_index = json.load(open(Path(data_dir["train"]) / "node_index.json", "rb"))
+
 
     # TODO 数据预处理
     if mode in ['val', 'test']:
@@ -168,6 +167,9 @@ def read_raw_news(cfg, file_path, mode='train'):
         # key_entities_mask = pickle.load(open(Path(data_dir["train"]) / "key_entities_mask.bin", "rb"))
         # hetero_graph_map = pickle.load(open(Path(data_dir["train"]) / "hetero_graph_map.bin", "rb"))
         # role_dict = pickle.load(open(Path(data_dir["train"]) / "role_dict.bin", "rb"))
+        node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
+        node_index = json.load(open(Path(data_dir["train"]) / "node_index.json", "rb"))
+
     else:
         news = {}
         news_dict = {}
@@ -186,6 +188,9 @@ def read_raw_news(cfg, file_path, mode='train'):
         news_topic_map = {}
         user_history_map = {}
         # hetero_graph_map = {}
+        node_dict = {node_type: {} for node_type in ['topic', 'subtopic', 'argument', 'trigger', 'entity']}
+        node_index = {node_type: {} for node_type in ['topic', 'subtopic', 'argument', 'trigger', 'entity']}
+
 
     # category_dict = {}
     # subcategory_dict = {}
@@ -225,10 +230,12 @@ def read_raw_news(cfg, file_path, mode='train'):
                 # print(f"news_id: {news_id}: abs_entity_ids: {abs_entity_ids}")
                 # print(f"abs_entity: {abs_entity_str}")
                 # entity_ids += abs_entity_ids
-                [update_dict(target_dict=entity_dict, key=entity_id, value=node_dict['entity'][entity_id]) for entity_id in entity_ids]
+                # [update_dict(target_dict=entity_dict, key=entity_id, value=node_dict['entity'][entity_id]) for entity_id in entity_ids]
                 # for entity_id in entity_ids:
                 #     print(f"{entity_id}: {node_dict['entity'][entity_id]}")
-                # [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
+                [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
+                [update_dict(target_dict=node_dict['entity'], key=entity_id, value=entity_dict[entity_id]) for entity_id in entity_ids]
+                [update_dict(target_dict=node_index['entity'], key=entity_dict[entity_id], value=entity_id) for entity_id in entity_ids]
                 # provided_entity = [obj["SurfaceForms"][0] for obj in json.loads(t_entity_str) if obj["SurfaceForms"]]
             else:
                 entity_ids = t_entity_str
@@ -275,7 +282,9 @@ def read_raw_news(cfg, file_path, mode='train'):
                 event_entities_origin = event_json["graph"]["entities"]
                 for event_entity in event_entities_origin:
                     start, end, entity_type, entity_subtype, confidence = event_entity
-                    entity_text = " ".join(event_json["tokens"][start:end])
+                    entity_text = " ".join(event_json["tokens"][start:end]).lower()
+                    update_dict(target_dict=node_dict['argument'], key=entity_text)
+                    update_dict(target_dict=node_index['argument'], key=node_dict['argument'][entity_text], value=entity_text)
                     event_entities.append(entity_text)
 
                 triggers_origin = event_json["graph"]["triggers"]
@@ -293,7 +302,9 @@ def read_raw_news(cfg, file_path, mode='train'):
                 # event_type_confidence = []
                 for trigger in triggers_origin:
                     start, end, _event_type, confidence = trigger
-                    trigger_text = " ".join(event_json["tokens"][start:end])
+                    trigger_text = " ".join(event_json["tokens"][start:end]).lower()
+                    update_dict(target_dict=node_dict['trigger'], key=trigger_text)
+                    update_dict(target_dict=node_index['trigger'], key=node_dict['trigger'][trigger_text], value=trigger_text)
                     triggers.append(trigger_text)
                     # event_types.append(f"{category}.{subcategory}")
                     # event_types.append(_event_type)
@@ -418,9 +429,11 @@ def read_raw_news(cfg, file_path, mode='train'):
 
             update_dict(target_dict=news, key=news_id, value=[tokens, category, subcategory, entity_ids,
                                                                 news_dict[news_id], abs_entity_ids])
-            update_dict(target_dict=category_dict, key=category, value=node_dict["topic"][category])
+            update_dict(target_dict=category_dict, key=category)
+            update_dict(target_dict=node_dict['topic'], key=category, value=category_dict[category])
             # print(f"category: {category}, category_dict_value: {category_dict[category]}, node_dict: {node_dict['topic'][category]}")
-            update_dict(target_dict=subcategory_dict, key=subcategory, value=node_dict["subtopic"][subcategory])
+            update_dict(target_dict=subcategory_dict, key=subcategory)
+            update_dict(target_dict=node_dict['subtopic'], key=subcategory, value=subcategory_dict[subcategory])
             # print(f"subcategory: {subcategory}, subcategory_dict_value: {subcategory_dict[subcategory]}, node_dict: {node_dict['subtopic'][subcategory]}")
 
             update_dict(target_dict=events, key=news_id, value=[event_type, event_type_dict[event_type], event_entities, category, subcategory, triggers])
@@ -456,12 +469,12 @@ def read_raw_news(cfg, file_path, mode='train'):
             word = [k for k, v in word_cnt.items() if v > cfg.model.word_filter_num]
             word_dict = {k: v for k, v in zip(word, range(1, len(word) + 1))}
             # return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map, node_dict, node_index
         else:  # val, test
             # TODO 非训练集要不要返回category_dict、subcategory_dict
             # return news, news_dict, None, None, entity_dict, None
 
-            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map
+            return news, news_dict, category_dict, subcategory_dict, entity_dict, None, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map, node_dict, node_index
 
 
 def read_user_info(cfg, mode, news, news_dict, category_dict, subcategory_dict, user_history_map):
@@ -543,7 +556,7 @@ def read_parsed_news(cfg, news, news_dict,
     return news_title, news_entity, news_category, news_subcategory, news_index, news_abs_entity
 
 
-def read_news_events(cfg, news, news_dict, event_type_dict=None, events=None, word_dict=None, category_dict=None, subcategory_dict=None, event_dict=None, node_dict=None):
+def read_news_events(cfg, news, news_dict, event_type_dict=None, events=None, word_dict=None, category_dict=None, subcategory_dict=None, event_dict=None, node_dict=None, node_index=None):
     # TODO 1位事件类型索引、5位事件实体、3位triggers、1位category、1位subcategory、1位news_index
     news_num = len(news) + 1
     category, subcategory, news_index = [np.zeros((news_num, 1), dtype='int32') for _ in range(3)]
@@ -621,7 +634,8 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
                 for tri in _trigger:
                     tri = tri.strip()[1:-1].strip("'").lower()
                     # print(f"tri: {tri}")
-                    trigger_ids.append(node_dict["trigger"][tri])
+                    if tri in node_dict["trigger"]:
+                        trigger_ids.append(node_dict["trigger"][tri])
                 # print(f"trigger_ids: {trigger_ids}")
                 if len(trigger_ids) < 3:
                     for i in range(3 - len(trigger_ids)):
@@ -646,7 +660,8 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
                 for arg in _argument:
                     arg = arg.strip()[1:-1].strip("'").lower()
                     # print(f"arg: {arg}")
-                    argument_ids.append(node_dict["argument"][arg])
+                    if arg in node_dict["argument"]:
+                        argument_ids.append(node_dict["argument"][arg])
                 # print(f"argument_ids: {argument_ids}")
                 if len(argument_ids) < 5:
                     for i in range(5 - len(argument_ids)):
@@ -664,7 +679,8 @@ def prepare_hetero_graph_info(cfg, node_dict, mode, news_dict):
                 entity_ids = []
                 for entity in _entity:
                     entity = entity.strip()[1:-1].strip("'")
-                    entity_ids.append(node_dict["entity"][entity])
+                    if entity in node_dict["entity"]:
+                        entity_ids.append(node_dict["entity"][entity])
                 if len(entity_ids) < 5:
                     for i in range(5 - len(entity_ids)):
                         entity_ids.append(0)
@@ -691,7 +707,7 @@ def prepare_preprocess_bin(cfg, mode):
 
     if cfg.reprocess is True:
         # Glove
-        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map = read_raw_news(
+        nltk_news, nltk_news_dict, category_dict, subcategory_dict, entity_dict, word_dict, abs_entity_dict, event_type_dict, events, event_dict, key_entities, news_subtopic_map, news_topic_map, user_history_map, node_dict, node_index = read_raw_news(
             file_path=Path(data_dir[mode]) / "news.tsv",
             cfg=cfg,
             mode=mode,
@@ -723,7 +739,10 @@ def prepare_preprocess_bin(cfg, mode):
         pickle.dump(user_history_map, open(Path(data_dir[mode]) / "user_history_map.bin", "wb"))
         # pickle.dump(key_entities_mask, open(Path(data_dir[mode]) / "key_entities_mask.bin", "wb"))
         # pickle.dump(role_dict, open(Path(data_dir[mode]) / "role_dict.bin", "wb"))
-        node_dict = json.load(open(Path(data_dir["train"]) / "node_dict.json", "rb"))
+        with open(Path(data_dir[mode]) / "node_dict.json", "w") as f:
+            json.dump(node_dict, f, indent=4)
+        with open(Path(data_dir[mode]) / "node_index.json", "w") as f:
+            json.dump(node_index, f, indent=4)
         # nltk_news_features: news_title, news_entity, news_category, news_subcategory, news_index
         nltk_news_features = read_parsed_news(cfg, nltk_news, nltk_news_dict,
                                               category_dict, subcategory_dict, entity_dict,
@@ -731,7 +750,7 @@ def prepare_preprocess_bin(cfg, mode):
         # print(f"nltk_news_features[4] = {nltk_news_features[4]}")
         # def read_news_events(cfg, news, news_dict, event_dict=None, events=None, word_dict=None, role_dict=None, category_dict=None, subcategory_dict=None,):
         # TODO one line
-        nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict, category_dict, subcategory_dict, event_dict, node_dict)
+        nltk_event_features = read_news_events(cfg, nltk_news, nltk_news_dict, event_type_dict, events, word_dict, category_dict, subcategory_dict, event_dict, node_dict, node_index)
 
         # TODO nltk_user_features
         # nltk_user_features = read_user_history()
@@ -1447,19 +1466,19 @@ def prepare_hetero_graph(cfg, mode='train'):
 
             for __trigger in _trigger:
                 __trigger = __trigger.strip()[1:-1].strip("").lower()
-                if __trigger != "":
+                if __trigger != "" and __trigger in node_dict['trigger']:
                     trigger.append(__trigger)
                     trigger_ids.append(node_dict['trigger'][__trigger])
 
             for __argument in _argument:
                 __argument = __argument.strip()[1:-1].strip("").lower()
-                if __argument != "":
+                if __argument != "" and __argument in node_dict['argument']:
                     argument.append(__argument)
                     argument_ids.append(node_dict['argument'][__argument])
 
             for __entity in _entity:
                 __entity = __entity.strip()[1:-1].strip("")
-                if __entity != "":
+                if __entity != "" and __entity in node_dict['entity']:
                     entity.append(__entity)
                     entity_ids.append(node_dict['entity'][__entity])
 

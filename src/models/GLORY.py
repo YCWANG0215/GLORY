@@ -233,9 +233,9 @@ class GLORY(nn.Module):
         #     clicked_subcategory = None
 
         if self.use_event:
-            clicked_event = self.event_encoder(clicked_event)
+            clicked_event_emb = self.event_encoder(clicked_event)
             # print(f"[train] clicked_event type = {type(clicked_event)}") # torch.Size([32, 400])
-            clicked_event_emb = self.event_attention_encoder(clicked_event, clicked_event_mask)
+            # clicked_event_emb = self.event_attention_encoder(clicked_event, clicked_event_mask)
             # print(f"clicked_event.shape: {clicked_event.shape}")
             # print(f"click_event_attention.shape: {clicked_event_attention.shape}")
             # TODO GRU
@@ -269,6 +269,7 @@ class GLORY(nn.Module):
             # print(f"[train] clicked_event.shape: {clicked_event.shape}")
         else:
             clicked_event_emb = None
+        # print(f"clicked_event_emb.shape: {clicked_event_emb.shape}")
         # print(f"candidate_entity.dtype: {candidate_entity.dtype}")
         # print(f"candidate_entity_mask.dtype: {entity_mask.dtype}")
         # print(f"!!!!!!!!!!clicked_key_entity.shape: {clicked_key_entity.shape}")
@@ -290,8 +291,8 @@ class GLORY(nn.Module):
         #     clicked_key_entity_emb = None
 
         # HieRec
-        hie_emb = self.hieRec_encoder(clicked_topic_list, clicked_topic_mask_list,
-                            clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
+        # hie_emb = self.hieRec_encoder(clicked_topic_list, clicked_topic_mask_list,
+        #                     clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
 
 
 
@@ -311,7 +312,8 @@ class GLORY(nn.Module):
         # print(f"clicked_origin_emb.shape: {clicked_origin_emb.shape}") # [32, 50, 400]
         # print(f"clicked_graph_emb.shape: {clicked_graph_emb.shape}") # [32, 50, 400]
         # print(f"clicked_entity.shape: {clicked_entity.shape}") # [32, 50, 400]
-        clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
+        # clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
+        clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity, clicked_event_emb)
         # print(f"clicked_common_emb.shape: {clicked_common_emb.shape}") # [32, 50, 400]
         # clicked_total_emb = self.click_total_encoder(clicked_common_emb, clicked_event_emb)
 
@@ -327,8 +329,11 @@ class GLORY(nn.Module):
         clicked_common_atte = self.atte(clicked_common_emb, None) # [32, 50]
         # print(f"clicked_event_emb.shape: {clicked_event_emb.shape}")
         # print(f"clicked_common_atte.shape: {clicked_common_atte.shape}")
-        user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb, hie_emb)
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb, hie_emb)
+        user_emb = self.atte(clicked_common_atte, None)
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb)
         # print(f"user_emb.shape: {user_emb.shape}") # [32, 400]
+
 
         # print(13)
         # ----------------------------------------- Candidate------------------------------------
@@ -443,15 +448,16 @@ class GLORY(nn.Module):
             # num_news不一定有多少条
             # 数据格式：[1, num_news, 400]
             # print(f"[val] clicked_event.shape: {clicked_event.shape}")
-            # clicked_event_emb = self.event_encoder(clicked_event.unsqueeze(0), None)
-            valid_clicked_event = clicked_event[-num_news:, :].view(batch_size, num_news, news_dim)
+            # clicked_event_emb = self.event_encoder(clicked_event.unsqueeze(0))
+            # valid_clicked_event = clicked_event[-num_news:, :].view(batch_size, num_news, news_dim)
+            clicked_event = clicked_event[-num_news:, :].view(batch_size, num_news, news_dim)
             # print(f"[val] [batch_size, num_news, news_dim]: [{batch_size, num_news, news_dim}]")
             # print(f"[val] valid_clicked_event.shape: {valid_clicked_event.shape}")
             # print(f"clicked_event_emb.shape: {clicked_event_emb.shape}")
             # TODO GRU
 
             # clicked_event = valid_clicked_event
-            # clicked_event = self.event_encoder(valid_clicked_event, clicked_event_mask)
+            # clicked_event_emb = self.event_encoder(valid_clicked_event)
             # print(f"click_event: {clicked_event}")
             # clicked_event = self.event_gru(clicked_event)
             # print(f"[train] clicked_event.shape: {clicked_event.shape}") # train: [32, 50, 400]
@@ -479,7 +485,7 @@ class GLORY(nn.Module):
             # print(f"[val] lengths: {lengths}")
             # print(f"clicked_event.shape: {clicked_event.shape}")
             # print(f"valid_clicked_event.shape: {valid_clicked_event.shape}")
-            clicked_event_emb = self.event_attention_encoder(valid_clicked_event, None)
+            # clicked_event_emb = self.event_attention_encoder(valid_clicked_event, None)
             # clicked_event_emb = self.event_attention_encoder(clicked_event, clicked_event_mask)
             # print(f"clicked_event_attention_emb.shape: {clicked_event_attention_emb.shape}")
             # clicked_event_gru_emb = self.gru(valid_clicked_event, lengths)
@@ -520,9 +526,12 @@ class GLORY(nn.Module):
 
         # clicked_subtopic_news = torch.cat(clicked_subtopic_news_list, dim=0).cpu().numpy()
         # print(f"clicked_subtopic_news.shape: {clicked_subtopic_news.shape}")
-        clicked_hie_emb = self.hieRec_encoder(clicked_topic_list, clicked_topic_mask_list,
-                            clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
-        clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb)
+
+        # clicked_hie_emb = self.hieRec_encoder(clicked_topic_list, clicked_topic_mask_list,
+        #                     clicked_subtopic_list, clicked_subtopic_mask_list, clicked_subtopic_news_list, clicked_subtopic_news_mask_list)
+
+        # clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb)
+        clicked_common_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb, clicked_event)
         # print(f"clicked_common_emb.shape: {clicked_common_emb.shape} ")
         # print(f"[val] clicked_common_emb: {clicked_common_emb}")
         clicked_common_atte = self.atte(clicked_common_emb, None)
@@ -534,7 +543,12 @@ class GLORY(nn.Module):
         # print(f"clicked_common_atte.shape: {clicked_common_atte.shape}")
         # print(f"clicked_event_emb.shape: {clicked_event_emb.shape}")
         # print(f"clicked_hie_emb.shape: {clicked_hie_emb.shape}")
-        user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb, clicked_hie_emb)
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb, clicked_hie_emb)
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb, clicked_hie_emb)
+        user_emb = self.atte(clicked_common_atte, None)
+
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb)
+        # user_emb = self.user_total_encoder(clicked_common_atte, clicked_event_emb)
 
 
         # ----------------------------------------- Candidate------------------------------------

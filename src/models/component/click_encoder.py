@@ -92,14 +92,18 @@ class ClickEncoder(nn.Module):
         #         (lambda a,b: torch.stack([a,b], dim=-2).view(-1, 2, self.news_dim), 'a,b -> x'),
         #         AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
         #     ])
-        self.atte = Sequential('a,b,c', [
-            (lambda a, b, c: torch.stack([a, b, c], dim=1).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+        # self.atte = Sequential('a,b,c', [
+        #     (lambda a, b, c: torch.stack([a, b, c], dim=1).view(-1, 3, self.news_dim), 'a,b,c -> x'),
+        #     AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
+        # ])
+        self.atte = Sequential('a,b,c,d', [
+            (lambda a, b, c, d: torch.stack([a, b, c, d], dim=1).view(-1, 4, self.news_dim), 'a,b,c,d -> x'),
             AttentionPooling(self.news_dim, cfg.model.attention_hidden_dim),
         ])
 
 
 
-    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None):
+    def forward(self, click_title_emb, click_graph_emb, click_entity_emb=None, clicked_event_emb=None):
 
         batch_size, num_news = click_title_emb.shape[0], click_title_emb.shape[1]
         # print("in click_encoder: ")
@@ -143,7 +147,7 @@ class ClickEncoder(nn.Module):
         # else:
         #     result = self.atte(click_title_emb, click_graph_emb)
 
-        result = self.atte(click_title_emb, click_graph_emb, click_entity_emb)
+        result = self.atte(click_title_emb, click_graph_emb, click_entity_emb, clicked_event_emb)
 
         # return result.view(batch_size, num_news, self.news_dim)
         return result.view(batch_size, -1, self.news_dim)
